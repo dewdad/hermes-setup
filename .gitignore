@@ -1,0 +1,30 @@
+# Never commit real secrets — the real .env lives in HERMES_HOME, not here.
+.env
+*.env
+!.env.example
+
+# Local Hermes backups / state that may be produced during testing
+*.bak
+*.bak.*
+hermes-home/**/*.bak
+hermes-home/**/*.bak.*
+*.zip
+*.tar.gz
+
+# Hermes runtime/state artifacts that must NOT be versioned if ever copied in
+hermes-home/auth.json
+hermes-home/.env
+hermes-home/state.db*
+hermes-home/response_store.db*
+hermes-home/kanban.db*
+hermes-home/sessions/
+hermes-home/memories/
+hermes-home/logs/
+hermes-home/cache/
+hermes-home/*_cache*.json
+hermes-home/mcp-tokens/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini

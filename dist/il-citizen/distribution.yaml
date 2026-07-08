@@ -7,15 +7,18 @@ distribution_owned:
 - cron
 - distribution.yaml
 - mcp.json
+- meta-skills
+- setup.steps.ps1
+- setup.steps.sh
 - skill-bundles
 - skills.install.json
 - skills.sh.json
 env_requires:
-- description: Primary provider (zenmux) — top up credits and create a Pay As You Go key at https://zenmux.ai/platform/pay-as-you-go; restrict the key to free models if you want to use only free-tier quota and avoid spending paid credits.
-  name: ZENMUX_API_KEY
-  required: false
-- description: Fallback provider (opencode-zen / big-pickle) — sign in and create/copy a Zen API key at https://opencode.ai/auth.
+- description: Primary provider (opencode-zen / big-pickle) — sign in and create/copy a Zen API key at https://opencode.ai/auth.
   name: OPENCODE_ZEN_API_KEY
+  required: false
+- description: Fallback + delegation provider (zenmux / claude-sonnet-5-free / claude-fable-5-free) — top up credits and create a Pay As You Go key at https://zenmux.ai/platform/pay-as-you-go; restrict the key to free models to use only free-tier quota.
+  name: ZENMUX_API_KEY
   required: false
 - description: Fallback provider (nvidia / glm-5.2) — generate a NVIDIA Build API key at https://build.nvidia.com/settings/api-keys.
   name: NVIDIA_API_KEY

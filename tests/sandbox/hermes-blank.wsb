@@ -1,0 +1,23 @@
+<Configuration>
+  <!--
+    Reference Windows Sandbox config for the hermes-setup blank-slate Desktop E2E.
+
+    PREFERRED: run  pwsh -File tests/sandbox/run-sandbox.ps1  — it generates a .wsb with the
+    correct absolute repo path and launches it. This static file is a manual fallback: replace
+    __REPO_ROOT__ below with the absolute path to your hermes-setup checkout, then double-click.
+
+    Host-safe: the repo is mapped READ-ONLY into a disposable Sandbox VM. Nothing here can touch
+    your real Hermes install; the whole VM is discarded when the window closes.
+  -->
+  <Networking>Default</Networking>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>__REPO_ROOT__</HostFolder>
+      <SandboxFolder>C:\hermes-setup</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>powershell.exe -NoExit -ExecutionPolicy Bypass -File "C:\hermes-setup\tests\sandbox\provision.ps1" -Template general</Command>
+  </LogonCommand>
+</Configuration>

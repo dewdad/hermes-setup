@@ -125,6 +125,54 @@ class PostInstallMerge(unittest.TestCase):
         self.assertEqual(merged.post_install[0].note, "override")
 
 
+class DiscoveryMerge(unittest.TestCase):
+    def test_discovery_set_union_base_then_locale(self) -> None:
+        base = _tpl("general", "base", None, discovery=[
+            {"label": "Hub", "url": "https://skills.sh"},
+        ])
+        locale = _tpl("il", "locale", "base/general", discovery=[
+            {"label": "IL", "url": "https://agentskills.co.il"},
+        ])
+        merged = resolve(locale, lambda _ref: base)
+        self.assertEqual(
+            [d.url for d in merged.discovery],
+            ["https://skills.sh", "https://agentskills.co.il"],
+        )
+
+    def test_discovery_dedups_by_url_child_overrides(self) -> None:
+        base = _tpl("general", "base", None, discovery=[{"label": "old", "url": "https://x"}])
+        child = _tpl("il", "locale", "base/general", discovery=[{"label": "new", "url": "https://x"}])
+        merged = resolve(child, lambda _ref: base)
+        self.assertEqual([(d.label, d.url) for d in merged.discovery], [("new", "https://x")])
+
+
+class TierMerge(unittest.TestCase):
+    def test_post_install_tier_carried_through_merge(self) -> None:
+        base = _tpl("general", "base", None, post_install=[{"id": "a/b/c", "tier": 1}])
+        child = _tpl("il", "locale", "base/general", post_install=[{"id": "d/e/f", "tier": 0}])
+        merged = resolve(child, lambda _ref: base)
+        by_id = {p.id: p.tier for p in merged.post_install}
+        self.assertEqual(by_id, {"a/b/c": 1, "d/e/f": 0})
+
+
+class SetupStepsMerge(unittest.TestCase):
+    def test_child_setup_steps_append_and_dedup_by_id(self) -> None:
+        base = _tpl("general", "base", None, setup_steps=[{"id": "rtk", "note": "base"}])
+        child = _tpl(
+            "dev", "persona", "base/general",
+            setup_steps=[{"id": "rtk", "note": "override"}, {"id": "other"}],
+        )
+        merged = resolve(child, lambda _ref: base)
+        self.assertEqual([s.id for s in merged.setup_steps], ["rtk", "other"])
+        self.assertEqual(merged.setup_steps[0].note, "override")
+
+    def test_child_exclude_prunes_inherited_setup_step_by_id(self) -> None:
+        base = _tpl("general", "base", None, setup_steps=[{"id": "rtk"}])
+        child = _tpl("min", "persona", "base/general", skills={"exclude": ["rtk"]})
+        merged = resolve(child, lambda _ref: base)
+        self.assertEqual([s.id for s in merged.setup_steps], [])
+
+
 class ResolveGuards(unittest.TestCase):
     def test_cycle_detected(self) -> None:
         a = _tpl("a", "persona", "p/b")

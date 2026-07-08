@@ -14,7 +14,10 @@
     * skill-bundles/, cron/, mcp.json -> merged/copied if the distribution ships them
     * .env          -> created from the distribution's .env.EXAMPLE ONLY if missing
   A full backup (hermes backup, or a zip fallback) is taken first unless -SkipBackup.
-  Best-effort: clones/pulls the optional shared skills checkout at ~/open-skills.
+  Provisions the free open-skills catalogue at ~/open-skills and the free Google Workspace CLI at
+  ~/multi-gws-cli (clone + npm build) by default so both are ready on first use; both are tolerated
+  if git/Node.js/network is unavailable. Use -SkipOpenSkills / -SkipGws to opt out. See
+  PREREQUISITES.md for the one-time host setup (Hermes, Nous Portal, Node.js + git, Beeper).
 
 .PARAMETER Template
   Distribution to apply. A ref ("persona/developer") or bare name ("developer"); the leaf name
@@ -27,9 +30,11 @@
 .PARAMETER Force      Overwrite SOUL.md even if customized.
 .PARAMETER SkipBackup Skip the safety backup step.
 .PARAMETER SkipSkills Do not copy the distribution skills.
-.PARAMETER SkipOpenSkills Do not clone/pull ~/open-skills.
+.PARAMETER SkipOpenSkills Do not provision (clone/pull) the free ~/open-skills catalogue (on by default).
+.PARAMETER SkipGws   Do not provision (clone + npm build) the free Google Workspace CLI at ~/multi-gws-cli (on by default).
 .PARAMETER SkipSkillsInstall Do not auto-install the distribution's referenced skills.
-.PARAMETER Yes    Auto-confirm the referenced-skill install prompt (non-interactive).
+.PARAMETER SkipSetupSteps Do not run the distribution's local-tool setup steps (e.g. RTK).
+.PARAMETER Yes    Auto-confirm the referenced-skill install AND setup-step prompts (non-interactive).
 
 .EXAMPLE
   .\bootstrap.ps1 -Template persona/developer -DryRun
@@ -45,7 +50,9 @@ param(
   [switch]$SkipBackup,
   [switch]$SkipSkills,
   [switch]$SkipOpenSkills,
+  [switch]$SkipGws,
   [switch]$SkipSkillsInstall,
+  [switch]$SkipSetupSteps,
   [switch]$Yes
 )
 
@@ -178,18 +185,39 @@ try {
     else { Copy-Item -LiteralPath $srcMcp -Destination (Join-Path $Target 'mcp.json') -Force; Write-Ok "wrote mcp.json" }
   }
 
-  Write-Step "Optional shared skills (~/open-skills)"
+  Write-Step "Provision open-skills catalogue (~/open-skills)"
   if ($SkipOpenSkills) { Write-Skip "skipped (-SkipOpenSkills)" }
-  elseif ($DryRun) { Write-Info "[dry-run] clone/pull https://github.com/dewdad/open-skills -> ~/open-skills" }
+  elseif ($DryRun) { Write-Info "[dry-run] clone/pull https://github.com/dewdad/open-skills -> ~/open-skills (default provisioning)" }
   else {
     $osDir = Join-Path $env:USERPROFILE 'open-skills'
     $git = (Get-Command git -ErrorAction SilentlyContinue).Source
-    if (-not $git) { Write-Warn2 "git not found — skipping (config tolerates a missing ~/open-skills)" }
+    if (-not $git) { Write-Warn2 "git not found — cannot provision ~/open-skills (tolerated; install git then re-run to add the bonus catalogue)" }
     else {
       try {
-        if (Test-Path -LiteralPath (Join-Path $osDir '.git')) { & $git -C $osDir pull --ff-only | Out-Null; Write-Ok "pulled ~/open-skills" }
-        else { & $git clone --depth 1 https://github.com/dewdad/open-skills $osDir | Out-Null; Write-Ok "cloned ~/open-skills" }
+        if (Test-Path -LiteralPath (Join-Path $osDir '.git')) { & $git -C $osDir pull --ff-only | Out-Null; Write-Ok "provisioned ~/open-skills (fast-forward pull)" }
+        else { & $git clone --depth 1 https://github.com/dewdad/open-skills $osDir | Out-Null; Write-Ok "provisioned ~/open-skills (cloned ~40-skill catalogue)" }
       } catch { Write-Warn2 "open-skills provisioning failed (tolerated): $($_.Exception.Message)" }
+    }
+  }
+
+  Write-Step "Provision Google Workspace CLI (~/multi-gws-cli)"
+  if ($SkipGws) { Write-Skip "skipped (-SkipGws)" }
+  elseif ($DryRun) { Write-Info "[dry-run] clone/pull https://github.com/dewdad/multi-gws-cli -> ~/multi-gws-cli, then 'npm install' + 'npm run build'" }
+  else {
+    $gwsDir = Join-Path $env:USERPROFILE 'multi-gws-cli'
+    $git = (Get-Command git -ErrorAction SilentlyContinue).Source
+    $npm = (Get-Command npm -ErrorAction SilentlyContinue).Source
+    if (-not $git) { Write-Warn2 "git not found — cannot provision ~/multi-gws-cli (tolerated; install git + Node.js then re-run — see PREREQUISITES.md)" }
+    elseif (-not $npm) { Write-Warn2 "npm/Node.js not found — cannot build ~/multi-gws-cli (tolerated; install Node.js LTS then re-run — see PREREQUISITES.md)" }
+    else {
+      try {
+        if (Test-Path -LiteralPath (Join-Path $gwsDir '.git')) { & $git -C $gwsDir pull --ff-only | Out-Null; Write-Ok "updated ~/multi-gws-cli (fast-forward pull)" }
+        else { & $git clone --depth 1 https://github.com/dewdad/multi-gws-cli $gwsDir | Out-Null; Write-Ok "cloned ~/multi-gws-cli" }
+        & $npm --prefix $gwsDir install 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) { Write-Ok "npm install (multi-gws-cli)" } else { Write-Warn2 "npm install reported non-zero (tolerated)" }
+        & $npm --prefix $gwsDir run build 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) { Write-Ok "npm run build (multi-gws-cli) — Google Workspace ready to authenticate" } else { Write-Warn2 "npm run build reported non-zero (tolerated)" }
+      } catch { Write-Warn2 "multi-gws-cli provisioning failed (tolerated): $($_.Exception.Message)" }
     }
   }
 
@@ -232,6 +260,23 @@ try {
           } catch { Write-Warn2 "skill '$($e.id)' failed (tolerated): $($_.Exception.Message)" }
         }
       }
+    }
+  }
+
+  Write-Step "Local tools (setup steps)"
+  $SetupScript = Join-Path $SourceHome 'setup.steps.ps1'
+  if ($SkipSetupSteps) { Write-Skip "skipped (-SkipSetupSteps)" }
+  elseif (-not (Test-Path -LiteralPath $SetupScript)) { Write-Skip "distribution ships no setup steps" }
+  else {
+    Write-Info "provisions local tools (installs a binary + wires its Hermes plugin; idempotent, failure-tolerant)"
+    $proceed = $true
+    if ($DryRun) { Write-Info "[dry-run] would run setup.steps.ps1 (e.g. install RTK + 'rtk init --agent hermes')"; $proceed = $false }
+    elseif (-not $Yes) {
+      $ans = Read-Host "Run local-tool setup steps now (e.g. install RTK)? [y/N]"
+      if ($ans -notmatch '^(?i)(y|yes)$') { $proceed = $false; Write-Skip "declined — run later via /finish-setup or setup.steps.ps1" }
+    }
+    if ($proceed) {
+      try { & $SetupScript; Write-Ok "ran setup steps" } catch { Write-Warn2 "setup steps reported issues (tolerated): $($_.Exception.Message)" }
     }
   }
 

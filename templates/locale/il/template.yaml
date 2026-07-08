@@ -11,6 +11,7 @@ distribution:
 soul:
   fragments:
     - he-style.md
+    - discover-skills.md
 
 # Reference-only: this repo authors no skills. Hebrew/RTL correctness and document generation come
 # from verified-real trusted-registry skills auto-installed by the apply flow (see post_install).
@@ -34,13 +35,32 @@ bundles:
 #   - skills-il hebrew-rtl-best-practices → real community skill from the skills-il tap
 # Every IL persona inherits these.
 post_install:
+  - id: skills-sh/skills-il/localization/hebrew-rtl-best-practices
+    note: Hebrew/RTL best-practices from agentskills.co.il (skills-il). Free to run.
+    tier: 0
+  - id: skills-sh/skills-il/localization/hebrew-document-generator
+    note: IL-native Hebrew PDF/DOCX/PPTX with correct RTL + bidi. Preferred for Hebrew output.
+    tier: 0
   - id: skills-sh/anthropics/skills/docx
-    note: Word documents (Hebrew letters, forms). Source-available; free to run locally.
+    note: Word documents (non-Hebrew fallback). Source-available; free to run locally.
+    tier: 0
   - id: skills-sh/anthropics/skills/pdf
-    note: PDF generation/extraction. Source-available; free to run locally.
+    note: PDF generation/extraction (non-Hebrew fallback). Source-available; free to run locally.
+    tier: 0
   - id: skills-sh/anthropics/skills/pptx
-    note: Presentations. Source-available; free to run locally.
+    note: Presentations (non-Hebrew fallback). Source-available; free to run locally.
+    tier: 0
   - id: skills-sh/anthropics/skills/xlsx
     note: Spreadsheets. Source-available; free to run locally.
-  - id: skills-sh/skills-il/localization/hebrew-rtl-best-practices
-    note: Community Hebrew/RTL best-practices from the skills-il tap. Free to run.
+    tier: 0
+
+# Feature 4 (discovery layer a): IL catalogues appended to the general list (set-union by url).
+# URLs only — no secrets. skills-il has no native Hermes tap (G7 negative), so discovery is by
+# github-source ids (above) + these catalogue links, not `hermes skills tap add`.
+discovery:
+  - label: agentskills.co.il
+    url: https://agentskills.co.il
+    note: The Israeli skills catalogue (GitHub org skills-il) — Hebrew, gov, localization, more.
+  - label: Claude-Israel index
+    url: https://github.com/danielrosehill/Claude-Israel
+    note: Curated index of Israel-focused agent skills and resources.

@@ -20,9 +20,16 @@ This tree is a *build output*, not a source of truth.
   but it MUST contain no literal secrets — `secretscan.py` fails the build otherwise.
 - **Reference-only — no `skills/` content.** Personas author no skills; distributions ship NO
   `skills/` directory. Skills are *referenced* (bucket 3) and auto-installed on apply via
-  `hermes skills install`. `distribution_owned` therefore does NOT list `skills`, so a
-  `hermes profile update` never touches the user's installed skills. (`skills` is only re-added to
-  the owned set in the rare case a template genuinely vendors a fetched github/url/well-known skill.)
+  `hermes skills install`. `distribution_owned` never lists `skills`. **Why this matters (proven):**
+  Hermes v0.18.x `profile_distribution.py` copies distribution payload with a **denylist**
+  (`USER_OWNED_EXCLUDE`), NOT the `distribution_owned` allowlist (which is advisory/dead code there).
+  `skills` is not in the denylist, so shipping a `skills/` dir makes `hermes profile update`
+  `rmtree()`+replace the profile's entire `skills/` — **wiping the user's installed skills**.
+- **The ONE generated skill lives under `meta-skills/`, never `skills/`.** The compiler emits exactly
+  one authored skill — `meta-skills/finish-setup/SKILL.md` (the reference-only carve-out; registered
+  as `/finish-setup`). It sits in a top-level `meta-skills/` dir (distribution-owned, refreshed on
+  update) referenced via a profile-relative `skills.external_dirs` entry in `config.yaml`. Because it
+  is NOT under `skills/`, `hermes profile update` refreshes it without ever touching user skills.
 - **Distribution layout** (per persona) — the compiler emits:
   - `distribution.yaml` — flat Hermes distribution manifest.
   - `config.yaml` — Hermes config fragment (uses `${VAR}` / `key_env`; never literal secrets;
@@ -32,6 +39,12 @@ This tree is a *build output*, not a source of truth.
   - `skill-bundles/` — declared bundles (skill *names* only, no content).
   - `skills.install.json` — machine-readable referenced-skill list the apply flow auto-installs
     (present iff the persona declares `post_install[]`).
+  - `setup.steps.sh` / `setup.steps.ps1` — generated per-platform local-tool provisioning scripts
+    (present iff the persona declares `setup_steps[]`); the apply flow runs the matching one
+    (gated, idempotent, failure-tolerant). Generated infrastructure like the meta-skill —
+    distribution-owned, secret-scanned, never hand-edited. `base/general` ships the RTK step.
+  - `meta-skills/finish-setup/SKILL.md` — the one generated skill (the carve-out), always emitted;
+    registered as `/finish-setup`. Distribution-owned; never under `skills/`.
   - `.env.EXAMPLE` — every env var the config references, no secrets.
   - `.gitignore` — keeps runtime state out of git.
   - `README.md` — per-distribution readme with the auto-installed referenced-skill block.

@@ -28,10 +28,20 @@ distributions under `dist/<persona>/`. Pure library + CLI; no installer behavior
   - `parse.py` — validate raw YAML → `Template`.
   - `merge.py` — inheritance + deep-merge (`!remove`, include/exclude, base→locale→persona).
   - `soul.py` — fragment compose + 20000-char cap.
-  - `manifest.py` — flat `distribution.yaml` + `.env.EXAMPLE`.
+  - `manifest.py` — flat `distribution.yaml` (owns `meta-skills`, never `skills`; owns
+    `setup.steps.{sh,ps1}` when `setup_steps[]` present) + `.env.EXAMPLE`.
   - `readme.py` — per-distribution README (includes the `hermes skills install …` post-install block).
-  - `emit.py` — orchestrate emission of one `dist/<name>/`.
-  - `secretscan.py` — secret-literal gate (fails build).
+  - `setup_skill.py` — build the generated `finish-setup` meta-skill body (the reference-only
+    carve-out): tiered skill list, provider-key guidance, `setup_steps[]` local-tools block,
+    `discovery[]` block. Pure function.
+  - `setup_scripts.py` — build the generated per-platform `setup.steps.{sh,ps1}` from `setup_steps[]`
+    (local-tool provisioning, e.g. RTK). Pure functions; POSIX/PowerShell single-quote escaping;
+    each step is idempotent (check-gated) + failure-tolerant. Emitted text is secret-scanned.
+  - `emit.py` — orchestrate emission of one `dist/<name>/`; writes the `finish-setup` meta-skill to
+    `meta-skills/finish-setup/SKILL.md` (secret-scanned first) and prepends the profile-relative
+    `meta-skills` dir to `config.yaml`'s `skills.external_dirs` so Hermes registers `/finish-setup`;
+    writes `setup.steps.{sh,ps1}` (secret-scanned) iff the template declares `setup_steps[]`.
+  - `secretscan.py` — secret-literal gate (fails build; also scans the generated meta-skill text).
   - `loader.py` — discover templates + resolve `extends` chain.
   - `sources.py` + `fetch.py` + `locks.py` — vendoring + lockfile IO.
   - `ingest.py` — drift detection from live `config.yaml`.

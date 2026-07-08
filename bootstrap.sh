@@ -9,21 +9,26 @@
 #   skills/, skill-bundles/, cron/, mcp.json -> merged/copied if the distribution ships them
 #   .env          -> created from the distribution's .env.EXAMPLE ONLY if missing
 # A backup (hermes backup, or a tar fallback) runs first unless --skip-backup.
-# Best-effort: clones/pulls the optional shared skills checkout at ~/open-skills.
+# Provisions the free open-skills catalogue at ~/open-skills and the free Google Workspace CLI at
+# ~/multi-gws-cli (clone + npm build) by default so both are ready on first use; both are tolerated
+# if git/Node.js/network is unavailable. --skip-open-skills / --skip-gws opt out. See PREREQUISITES.md
+# for the one-time host setup (Hermes, Nous Portal, Node.js + git, Beeper).
 set -euo pipefail
 
 TEMPLATE="base/general"
 HERMES_HOME_ARG=""
-DRY_RUN=0; FORCE=0; SKIP_BACKUP=0; SKIP_SKILLS=0; SKIP_OPEN_SKILLS=0; SKIP_SKILLS_INSTALL=0; ASSUME_YES=0
+DRY_RUN=0; FORCE=0; SKIP_BACKUP=0; SKIP_SKILLS=0; SKIP_OPEN_SKILLS=0; SKIP_GWS=0; SKIP_SKILLS_INSTALL=0; SKIP_SETUP_STEPS=0; ASSUME_YES=0
 
 usage() {
   cat <<'EOF'
 Usage: ./bootstrap.sh [--template REF|NAME] [--hermes-home PATH]
                       [--dry-run] [--force] [--skip-backup] [--skip-skills] [--skip-open-skills]
-                      [--skip-skills-install] [--yes]
+                      [--skip-gws] [--skip-skills-install] [--skip-setup-steps] [--yes]
   --template            Distribution to apply (ref "persona/developer" or name "developer"). Default base/general.
+  --skip-gws            Do not provision (clone + npm build) the free Google Workspace CLI at ~/multi-gws-cli.
   --skip-skills-install Do not auto-install the distribution's referenced skills.
-  --yes                 Auto-confirm the referenced-skill install prompt (non-interactive).
+  --skip-setup-steps    Do not run the distribution's local-tool setup steps (e.g. RTK).
+  --yes                 Auto-confirm the referenced-skill install AND setup-step prompts (non-interactive).
 EOF
 }
 
@@ -36,7 +41,9 @@ while [ $# -gt 0 ]; do
     --skip-backup) SKIP_BACKUP=1; shift;;
     --skip-skills) SKIP_SKILLS=1; shift;;
     --skip-open-skills) SKIP_OPEN_SKILLS=1; shift;;
+    --skip-gws) SKIP_GWS=1; shift;;
     --skip-skills-install) SKIP_SKILLS_INSTALL=1; shift;;
+    --skip-setup-steps) SKIP_SETUP_STEPS=1; shift;;
     --yes) ASSUME_YES=1; shift;;
     -h|--help) usage; exit 0;;
     *) echo "unknown option: $1" >&2; usage; exit 2;;
@@ -122,14 +129,29 @@ if [ -f "$SOURCE_HOME/mcp.json" ]; then
   if [ "$DRY_RUN" = 1 ]; then info "[dry-run] copy mcp.json"; else cp -f "$SOURCE_HOME/mcp.json" "$TARGET/mcp.json"; ok "wrote mcp.json"; fi
 fi
 
-step "Optional shared skills (~/open-skills)"
+step "Provision open-skills catalogue (~/open-skills)"
 if [ "$SKIP_OPEN_SKILLS" = 1 ]; then skip "skipped (--skip-open-skills)"
-elif [ "$DRY_RUN" = 1 ]; then info "[dry-run] clone/pull https://github.com/dewdad/open-skills -> ~/open-skills"
-elif ! command -v git >/dev/null 2>&1; then warn "git not found — skipping (a missing ~/open-skills is tolerated)"
+elif [ "$DRY_RUN" = 1 ]; then info "[dry-run] clone/pull https://github.com/dewdad/open-skills -> ~/open-skills (default provisioning)"
+elif ! command -v git >/dev/null 2>&1; then warn "git not found — cannot provision ~/open-skills (tolerated; install git then re-run to add the bonus catalogue)"
 else
   os_dir="$HOME/open-skills"
-  if [ -d "$os_dir/.git" ]; then git -C "$os_dir" pull --ff-only >/dev/null 2>&1 && ok "pulled ~/open-skills" || warn "open-skills pull failed (tolerated)"
-  else git clone --depth 1 https://github.com/dewdad/open-skills "$os_dir" >/dev/null 2>&1 && ok "cloned ~/open-skills" || warn "open-skills clone failed (tolerated)"; fi
+  if [ -d "$os_dir/.git" ]; then git -C "$os_dir" pull --ff-only >/dev/null 2>&1 && ok "provisioned ~/open-skills (fast-forward pull)" || warn "open-skills pull failed (tolerated)"
+  else git clone --depth 1 https://github.com/dewdad/open-skills "$os_dir" >/dev/null 2>&1 && ok "provisioned ~/open-skills (cloned ~40-skill catalogue)" || warn "open-skills clone failed (tolerated)"; fi
+fi
+
+step "Provision Google Workspace CLI (~/multi-gws-cli)"
+if [ "$SKIP_GWS" = 1 ]; then skip "skipped (--skip-gws)"
+elif [ "$DRY_RUN" = 1 ]; then info "[dry-run] clone/pull https://github.com/dewdad/multi-gws-cli -> ~/multi-gws-cli, then 'npm install' + 'npm run build'"
+elif ! command -v git >/dev/null 2>&1; then warn "git not found — cannot provision ~/multi-gws-cli (tolerated; install git + Node.js then re-run — see PREREQUISITES.md)"
+elif ! command -v npm >/dev/null 2>&1; then warn "npm/Node.js not found — cannot build ~/multi-gws-cli (tolerated; install Node.js LTS then re-run — see PREREQUISITES.md)"
+else
+  gws_dir="$HOME/multi-gws-cli"
+  if [ -d "$gws_dir/.git" ]; then git -C "$gws_dir" pull --ff-only >/dev/null 2>&1 && ok "updated ~/multi-gws-cli (fast-forward pull)" || warn "multi-gws-cli pull failed (tolerated)"
+  else git clone --depth 1 https://github.com/dewdad/multi-gws-cli "$gws_dir" >/dev/null 2>&1 && ok "cloned ~/multi-gws-cli" || warn "multi-gws-cli clone failed (tolerated)"; fi
+  if [ -d "$gws_dir" ]; then
+    npm --prefix "$gws_dir" install >/dev/null 2>&1 && ok "npm install (multi-gws-cli)" || warn "npm install reported non-zero (tolerated)"
+    npm --prefix "$gws_dir" run build >/dev/null 2>&1 && ok "npm run build (multi-gws-cli) — Google Workspace ready to authenticate" || warn "npm run build reported non-zero (tolerated)"
+  fi
 fi
 
 step ".env"
@@ -182,6 +204,21 @@ else
       done
     fi
   fi
+fi
+
+step "Local tools (setup steps)"
+SETUP_SCRIPT="$SOURCE_HOME/setup.steps.sh"
+if [ "$SKIP_SETUP_STEPS" = 1 ]; then skip "skipped (--skip-setup-steps)"
+elif [ ! -f "$SETUP_SCRIPT" ]; then skip "distribution ships no setup steps"
+else
+  info "provisions local tools (installs a binary + wires its Hermes plugin; idempotent, failure-tolerant)"
+  proceed=1
+  if [ "$DRY_RUN" = 1 ]; then info "[dry-run] would run setup.steps.sh (e.g. install RTK + 'rtk init --agent hermes')"; proceed=0
+  elif [ "$ASSUME_YES" = 0 ]; then
+    printf '    Run local-tool setup steps now (e.g. install RTK)? [y/N] '
+    read -r ans; case "$ans" in y|Y|yes|YES) ;; *) proceed=0; skip "declined — run later via /finish-setup or setup.steps.sh";; esac
+  fi
+  if [ "$proceed" = 1 ]; then sh "$SETUP_SCRIPT" && ok "ran setup steps" || warn "setup steps reported issues (tolerated)"; fi
 fi
 
 step "Verify"

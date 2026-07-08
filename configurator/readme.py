@@ -7,7 +7,7 @@ extras stay optional without bloating the install.
 
 from __future__ import annotations
 
-from configurator.model import PostInstallRef, Template
+from configurator.model import PostInstallRef, SetupStep, Template
 
 
 def _post_install_block(refs: tuple[PostInstallRef, ...]) -> list[str]:
@@ -37,6 +37,27 @@ def _post_install_block(refs: tuple[PostInstallRef, ...]) -> list[str]:
     return lines
 
 
+def _setup_steps_block(steps: tuple[SetupStep, ...]) -> list[str]:
+    if not steps:
+        return []
+    lines = [
+        "",
+        "## Local tools (auto-set-up on apply)",
+        "",
+        "Beyond skills, this distribution provisions local tools that install a standalone binary and",
+        "wire a Hermes plugin. The apply flow (`bootstrap.ps1` / `bootstrap.sh`) runs the generated",
+        "`setup.steps.ps1` / `setup.steps.sh` — with your confirmation, idempotently, tolerating any",
+        "failure. Each is free-to-run and keyless unless marked Tier 1.",
+        "",
+    ]
+    for step in steps:
+        label = step.label or step.id
+        tier_tag = "" if step.tier == 0 else " (Tier 1 — opt-in)"
+        note = f" — {step.note}" if step.note else ""
+        lines.append(f"- **{label}**{tier_tag}{note}")
+    return lines
+
+
 def build_readme(template: Template) -> str:
     """Render the distribution README markdown for ``template``."""
     dist = template.distribution
@@ -60,4 +81,5 @@ def build_readme(template: Template) -> str:
         "a working agent). Then run `hermes -p <profile> config check`.",
     ]
     lines.extend(_post_install_block(template.post_install))
+    lines.extend(_setup_steps_block(template.setup_steps))
     return "\n".join(lines).rstrip() + "\n"

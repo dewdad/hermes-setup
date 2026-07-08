@@ -1,8 +1,33 @@
 {
   "skills": [
     {
+      "id": "skills-sh/dewdad/open-skills/web-search-api",
+      "note": "Preferred web search — free SearXNG multi-engine (Google/Bing/DDG/70+). Keyless.",
+      "tap": false
+    },
+    {
+      "id": "skills-sh/dewdad/open-skills/browser-automation-agent",
+      "note": "Browser automation via agent-browser CLI. Free, keyless.",
+      "tap": false
+    },
+    {
+      "id": "skills-sh/dewdad/open-skills/using-web-scraping",
+      "note": "Scrape public web content with headless Chrome. Free, keyless.",
+      "tap": false
+    },
+    {
+      "id": "skills-sh/dewdad/open-skills/crawl-websites-at-scale",
+      "note": "Bulk crawl with Scrapy. Free, keyless.",
+      "tap": false
+    },
+    {
       "id": "official/research/duckduckgo-search",
-      "note": "Keyless DuckDuckGo web search fallback for the `web` toolset. Official, free to run.",
+      "note": "Keyless DuckDuckGo fallback for the `web` toolset when SearXNG instances are down.",
+      "tap": false
+    },
+    {
+      "id": "skills-sh/dewdad/beeper-desktop-api-skill/beeper-desktop-api",
+      "note": "Cross-platform messaging (WhatsApp/iMessage/Telegram/…). Needs the free Beeper Desktop app.",
       "tap": false
     }
   ]

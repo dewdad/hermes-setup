@@ -39,19 +39,76 @@ env-var checks, secret hygiene, and skill security scanning — we never reinven
 
 ## Project-wide contracts (binding)
 
-- **Guiding principle** — a user must be able to *quickly* apply a persona and *affordably* run it.
-  Curated skills stay **free-to-run and local** (no per-call paid services on the default path).
+- **Guiding principle** — a layman must be able to get a working, capable agent in **one step, for
+  free**, then optionally polish it. `hermes-setup` is a **contributor tool**; the layman never runs
+  Python (see the layman/Desktop path below). Curated skills stay **free-to-run and local** (no
+  per-call paid services on the default path).
+- **Capability tiers (binding)** — capabilities are split by auth friction so the free path stays
+  cheap and simple:
+  - **Tier 0 — free-to-run, on by default:** free chat on the default model chain — **no per-call
+    cost**. Its documented baseline is the **free Nous Portal subscription** ($0 / free-models-only)
+    plus a `hermes setup --portal` login — a **required one-time prereq** (see `PREREQUISITES.md`)
+    that powers the `nous / stepfun/step-3.7-flash:free` fallback; adding any **one** free-tier
+    provider key is optional and unlocks the higher-tier free models (with zero keys AND no Portal
+    login the chain returns HTTP 403). Plus **genuinely keyless** browser automation + web
+    research/scraping (from `dewdad/open-skills`, no key at all), and the free/keyless/local RTK
+    token-compressor (a `setup_steps[]` local tool). Installed on apply.
+    **A working agent depends ONLY on Tier-0 (free) providers, never Tier-1.**
+  - **Tier 1 — guided opt-in:** Google Workspace (`multi-gws-cli` — Node build + OAuth) and
+    cross-platform messaging (`beeper` — companion app). The apply flow now **provisions** both for
+    free (bootstrap clones + `npm run build`s `~/multi-gws-cli`; the `beeper` skill auto-installs
+    from `skills.install.json`), and `/finish-setup` guides their human auth. Their host prereqs
+    (Node.js + git, the Beeper Desktop app, a Google account) live in `PREREQUISITES.md`. Still
+    **never required** for a working agent, never on the critical path, never a paid/per-call
+    dependency — they stay inert until the user completes the free auth.
 - **Reference-only skills (HARD RULE)** — this repo **authors no skill content**. Personas only
   *reference* verified-real skill ids from trusted registries; `dist/<persona>/` ships **no**
   `skills/` directory. Every referenced id MUST be confirmed real with `hermes skills search` /
   `hermes skills inspect` before shipping — no fabricated or placeholder ids. Where no trusted
   registry skill exists for a capability, reference the closest real one or omit it (SOUL still
   shapes behavior) — never author one.
+  - **The ONE carve-out** — the compiler generates a single onboarding skill, `finish-setup`
+    (`configurator/setup_skill.py`), emitted to `dist/<persona>/meta-skills/finish-setup/SKILL.md`.
+    It is *generated infrastructure*, secret-scanned like every artifact, and is the sole exception
+    to "authors no skill content". It is deliberately shipped under **`meta-skills/` (NOT `skills/`)**:
+    Hermes' `profile_distribution.py` updater wholesale-replaces any shipped top-level dir it copies
+    (it is denylist-driven; `distribution_owned` is advisory only in Hermes v0.18.x), so shipping it
+    under `skills/` would **wipe the user's installed skills on `hermes profile update`** (proven).
+    `config.yaml` references `meta-skills` via a profile-relative `skills.external_dirs` entry so
+    Hermes discovers it and registers `/finish-setup`. `dist/` still ships no `skills/`.
+- **`/finish-setup` completion command** — Hermes registers every discovered skill as a
+  `/slash-command`, so the generated meta-skill is invoked as `/finish-setup`. It walks the user
+  through optional provider keys, (re)installs the referenced skills grouped by Tier, offers Tier-1
+  opt-ins, runs `config check`/`doctor`, and lists discovery catalogues. It supplements bootstrap and
+  is the primary completion path for named-profile / Desktop installs (which don't run bootstrap).
+- **In-agent discovery** — templates carry a `discovery[]` list of `{label, url, note}` catalogue
+  links (URLs only) merged base→locale and rendered into `/finish-setup`; `locale/il` adds a SOUL
+  fragment teaching `hermes skills search`/`install`. `skills-il` has no native Hermes tap, so IL
+  discovery is by github-source ids + catalogue links (agentskills.co.il, Claude-Israel), not a tap.
+- **IL skills sourced from `skills-il` only** — Israeli skills come exclusively from
+  **agentskills.co.il** (GitHub org `skills-il`, MIT, security-scanned), referenced as
+  `skills-sh/skills-il/<category-repo>/<skill>`. No IL skill comes from `dewdad/open-skills`.
+  Payment-gateway / bank-connector (`tax-and-finance`) skills are excluded (free-to-run).
 - **Auto-install at apply** — referenced skills are emitted machine-readably to
   `dist/<persona>/skills.install.json` (and to the README). The apply flow
   (`bootstrap.ps1`/`bootstrap.sh`) auto-runs `hermes skills install <id>` / `hermes skills tap add
   <tap>` for each, gated by the user's confirmation and tolerant of individual failures, so applying
   a persona lands its skills installed **and** Hermes-security-scanned.
+- **Zero paid Tool Gateway by default (binding)** — `base/general` forces every Nous Tool Gateway
+  (Portal) tool off the paid gateway (`web`, `browser`, `image_gen`, `tts` all `use_gateway: false`)
+  and pins `web`/`browser` to free keyless backends (`ddgs` / `local`) so Hermes' "fall back to the
+  gateway when no direct key exists" rule can never route a paid call. The agent's web + browser work
+  is served free by these backends and the keyless `dewdad/open-skills` skills — never the paid
+  gateway. `image_gen`/`tts` ship no free local backend; they stay gateway-off (a direct key is
+  needed only if a user opts in — never a paid-gateway call on the default, subscription-less path).
+- **Local-tool provisioning (`setup_steps[]`)** — capabilities that are **not** a `hermes skills
+  install` (a standalone binary + a Hermes plugin) are declared as template `setup_steps[]`. The
+  compiler generates per-platform `dist/<persona>/setup.steps.{sh,ps1}` (generated infrastructure,
+  secret-scanned); the apply flow runs the platform-matched one — gated by confirmation, idempotent
+  (a check command skips already-provisioned tools), failure-tolerant — and `/finish-setup` shows the
+  manual commands. `base/general` ships **RTK** (`rtk-ai/rtk`, Apache-2.0): a free/keyless/local
+  Tier-0 CLI that compresses terminal output 60–90% before it reaches the model, wired via
+  `rtk init --agent hermes` into `$HERMES_HOME/plugins/rtk-rewrite/`.
 - **Secret hygiene (HARD RULE — no child may weaken it)** — never commit or emit `.env`, `auth.json`,
   `models.json`, `desktop.json`, `state.db*`, `sessions/`, `memories/`, or any literal secret. Emitted
   `config.yaml` references secrets only as `${VAR}` / `key_env`. The compiler **fails the build** on any
@@ -61,13 +118,28 @@ env-var checks, secret hygiene, and skill security scanning — we never reinven
   1. **Vendored + locked (dormant capability)** — retained github/url/well-known fetch + `locks/`
      pinning for genuinely *fetched* real skills if offline reproducibility is ever needed. `local`
      (author-in-repo) is removed. No template uses this today, so `locks/` is empty.
-  2. **Referenced live via `skills.external_dirs`** — fast-moving shared checkouts (e.g. `~/open-skills`),
-     never copied into `dist/`; Hermes silently skips them if absent.
+  2. **Referenced live via `skills.external_dirs`** — fast-moving shared checkouts (`~/open-skills/skills`
+     bonus layer; `~/multi-gws-cli` Tier-1 Google Workspace clone), never copied into `dist/`; Hermes
+     silently skips them if absent. The apply flow (`bootstrap`) provisions both for free by default
+     (git clone; `~/multi-gws-cli` also `npm install` + `npm run build` — needs Node.js + git;
+     `-SkipOpenSkills` / `-SkipGws` opt out). The compiler also prepends the profile-relative
+     `meta-skills` dir.
   3. **Referenced post-install (the DEFAULT path)** — `post_install[]` ids from trusted registries:
      default taps (openai, anthropics, huggingface, NVIDIA, garrytan/gstack), `obra/superpowers`,
-     `official/…`, and source-available skills (Anthropic docx/pdf/pptx/xlsx). Never vendored
-     (preserves trust + `NVIDIA/skills` signatures, sidesteps redistribution-license issues); the
-     apply flow auto-installs them from `skills.install.json`.
+     `official/…`, source-available skills (Anthropic docx/pdf/pptx/xlsx), the Tier-0 flagship
+     `skills-sh/dewdad/open-skills/*` (browser automation + web research/scraping), and IL
+     `skills-sh/skills-il/*`. Never vendored (preserves trust + `NVIDIA/skills` signatures, sidesteps
+     redistribution-license issues); the apply flow auto-installs them from `skills.install.json`.
+     Entries carry an optional `tier` (0 default / 1 opt-in) that `/finish-setup` groups by.
+- **Layman / Hermes-Desktop one-step install** — the layman never touches the compiler. After the
+  one-time host setup in `PREREQUISITES.md` (Hermes, free Nous Portal subscription + login, Node.js
+  + git), each `dist/<persona>/` is a ready standalone distribution installable in one step from a
+  local folder, the user's published git repo, or Hermes Desktop's in-UI import:
+  `hermes profile install ./dist/general --name general` (or `<REPO_URL>`). Tier-0's browser
+  automation + web research work immediately keyless; free chat runs on the free Nous Portal
+  baseline (or any one free-tier key), which `/finish-setup` walks the user through (along with
+  Tier-1). Publishing to a concrete repo is a **user/manual step** — no org is hard-coded and no
+  implementation depends on it.
 - **Determinism & portability** — emit with stable key ordering so `dist/` diffs cleanly in git.
   Windows-first correctness (paths, UTF-8 with Hebrew content) since this machine is the primary test bed.
 - **Config schema** — target `_config_version: 33` (Hermes v0.18.x / 2026.7.x). Custom providers use
@@ -88,13 +160,19 @@ env-var checks, secret hygiene, and skill security scanning — we never reinven
 
 ## Child DOX Index
 
-- `templates/AGENTS.md` — template authoring contract: `template.yaml` schema, single-inheritance + merge
-  semantics (`include`/`exclude`, `!remove`, base→locale→persona ordering), SOUL fragment composition + 20k
-  cap, skill-bucket rules, `env` keys `required: false`.
+- `templates/AGENTS.md` — template authoring contract: `template.yaml` schema (incl. `post_install[].tier`,
+  `discovery[]`, and `setup_steps[]` local-tool provisioning), single-inheritance + merge semantics
+  (`include`/`exclude`, `!remove`, base→locale→persona ordering; `discovery` set-union by url; `setup_steps`
+  set-union by id, exclude-by-id), SOUL fragment composition + 20k cap, skill-bucket rules, `env` keys
+  `required: false`.
 - `configurator/AGENTS.md` — compiler code contract: stdlib + PyYAML only, secret-literal detection fails the
-  build, `ingest.py` reads `config.yaml` only, deterministic emit, per-module responsibility boundaries.
+  build (incl. the generated meta-skill + `setup.steps.{sh,ps1}`), `setup_skill.py` builds `/finish-setup`,
+  `setup_scripts.py` builds the per-platform setup scripts, `emit.py` writes+scans them under `meta-skills/` /
+  distribution root and injects the relative external_dir, `ingest.py` reads `config.yaml` only, deterministic
+  emit, per-module responsibility boundaries.
 - `dist/AGENTS.md` — generated-output contract: never hand-edit (regenerate via `compile`); committed but
-  contains no secrets and no `skills/` content (reference-only); ships `skills.install.json` for auto-install.
+  contains no secrets and no `skills/` content (reference-only); ships one generated `meta-skills/finish-setup/`
+  (the carve-out) + `skills.install.json` for auto-install + `setup.steps.{sh,ps1}` when `setup_steps[]` present.
 - `locks/AGENTS.md` — lockfile provenance contract: `source_id`, `resolved_commit_or_hash`, `fetched_at`,
   `license`, `redistributable`; `--update-locks` is the only writer.
 - `tests/AGENTS.md` — harness safety contract: throwaway named profiles only; never target `default`/empty

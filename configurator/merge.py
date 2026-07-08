@@ -14,8 +14,10 @@ from typing import TypeGuard
 from configurator.errors import MergeError
 from configurator.model import (
     Bundle,
+    DiscoveryRef,
     EnvVar,
     PostInstallRef,
+    SetupStep,
     SkillRef,
     SkillsSpec,
     SoulFragment,
@@ -117,6 +119,34 @@ def _merge_post_install(
     return tuple(r for r in by_id.values() if _pi_name(r) not in excluded)
 
 
+def _merge_discovery(
+    parent: tuple[DiscoveryRef, ...], child: tuple[DiscoveryRef, ...],
+) -> tuple[DiscoveryRef, ...]:
+    """Set-union by url, parent entries first then new child entries (child overrides on url)."""
+    order: list[str] = []
+    by_url: dict[str, DiscoveryRef] = {}
+    for ref in (*parent, *child):
+        if ref.url not in by_url:
+            order.append(ref.url)
+        by_url[ref.url] = ref
+    return tuple(by_url[url] for url in order)
+
+
+def _merge_setup_steps(
+    parent: tuple[SetupStep, ...],
+    child: tuple[SetupStep, ...],
+    excluded: frozenset[str],
+) -> tuple[SetupStep, ...]:
+    """Set-union by id (child overrides), preserving base->child order; ``skills.exclude`` drops by id."""
+    order: list[str] = []
+    by_id: dict[str, SetupStep] = {}
+    for step in (*parent, *child):
+        if step.id not in by_id:
+            order.append(step.id)
+        by_id[step.id] = step
+    return tuple(by_id[sid] for sid in order if sid not in excluded)
+
+
 def _merge_templates(parent: Template, child: Template) -> Template:
     """Produce the child with the parent's contributions folded in beneath it."""
     excluded = frozenset(parent.skills.exclude) | frozenset(child.skills.exclude)
@@ -133,6 +163,8 @@ def _merge_templates(parent: Template, child: Template) -> Template:
         mcp=merge_config(parent.mcp, child.mcp),
         cron=(*parent.cron, *child.cron),
         post_install=_merge_post_install(parent.post_install, child.post_install, excluded),
+        discovery=_merge_discovery(parent.discovery, child.discovery),
+        setup_steps=_merge_setup_steps(parent.setup_steps, child.setup_steps, excluded),
         source_dir=child.source_dir,
     )
 

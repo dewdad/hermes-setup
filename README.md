@@ -6,6 +6,45 @@ This repo is *not* an installer. Hermes' own `hermes profile install/update` han
 
 ---
 
+## For everyone — one-step install (no terminal, no Python)
+
+You do **not** need this repo's compiler, Python, or any developer tooling to *use* a persona. The
+compiler is a **contributor tool**; a compiled distribution under `dist/<persona>/` is a ready,
+standalone Hermes profile you install in one step and use for free.
+
+> **Do the one-time prerequisites first.** Before installing a persona, work through
+> **[`PREREQUISITES.md`](PREREQUISITES.md)** — install Hermes, complete the **free Nous Portal
+> subscription** + `hermes setup --portal` login (the baseline that powers free chat), and install
+> **Node.js + git** (the apply flow builds the Google Workspace CLI). Beeper Desktop and a Google
+> account are optional Tier-1 extras. Everything on the list is free to run.
+
+1. **Install Hermes** — [Desktop installer](https://hermes-agent.nousresearch.com/) (recommended for
+   non-technical users), or the one-line CLI installer under *Quick start* below.
+2. **Install the `general` profile in one step** — from the user's published repo, a local folder, or
+   (if your Hermes Desktop build supports it) the in-UI "install profile from git/URL" import:
+
+   ```bash
+   hermes profile install <REPO_URL> --name general      # once someone publishes dist/general
+   hermes profile install ./dist/general --name general  # or straight from a local folder
+   ```
+
+3. **Turn on free chat with one key (or a free sign-in).** Chat runs on a free, no-per-call-cost
+   model chain, but it needs **one** free-tier provider key — or a free Nous sign-in via
+   `hermes auth`. Browser automation and web research/scraping (SearXNG + DuckDuckGo) are **genuinely
+   keyless** and install on apply, so those work before you add anything.
+4. **Run `/finish-setup`** in the chat — it walks you through setting that one free key (or sign-in),
+   (re)installs the referenced skills, offers Tier-1 extras (Google Workspace, messaging), and lists
+   more skills to discover. Everything beyond the one chat key is optional.
+
+> **Capability tiers.** *Tier 0* is **free to run** (no per-call cost): free chat needs **one** free
+> key or a `hermes auth` sign-in, while browser automation + web research are **keyless**. A working
+> agent depends only on Tier-0 (free) providers. *Tier 1* (Google Workspace via `multi-gws-cli`,
+> messaging via `beeper`) is a guided opt-in through `/finish-setup` and is never required.
+
+Everything below is the **contributor** workflow for authoring and compiling personas.
+
+---
+
 ## What it is
 
 Templates live under `templates/` and are resolved through a strict **single-inheritance chain**:
@@ -59,7 +98,10 @@ skill or omits it — the SOUL fragments still shape behavior. The compiler **fa
 
 ---
 
-## Quick start
+## Quick start (contributors — compiling from templates)
+
+> If you just want to *use* a persona, see **For everyone — one-step install** above; you do not
+> need any of the steps in this section.
 
 ### 1. Install Hermes (once per machine)
 
@@ -148,18 +190,18 @@ Bootstrap default template is `base/general`. It backs up, swaps `config.yaml` w
 
 See `AGENT_SETUP.md` for the full step-by-step runbook (both flows) that a coding agent can follow.
 
-### 5. Optional: the shared external-skills checkout
+### 5. The shared open-skills checkout (provisioned for you)
 
-`base/general` emits `skills.external_dirs: [~/open-skills/skills]`. Cloning that repo is **optional** — Hermes silently skips missing external dirs, so nothing breaks if it isn't there:
+`base/general` emits `skills.external_dirs: [~/open-skills/skills]`. **You normally don't run this by hand** — both apply paths provision it for first use: the `bootstrap` scripts clone/pull it by default (skip with `-SkipOpenSkills` / `--skip-open-skills`), and `/finish-setup` walks the agent through the same clone. It stays fully tolerated — Hermes silently skips a missing external dir, so a git/network failure never breaks the agent. To provision or refresh it manually:
 
 ```powershell
-git clone https://github.com/dewdad/open-skills $HOME\open-skills
+git clone --depth 1 https://github.com/dewdad/open-skills $HOME\open-skills
 # or refresh an existing checkout:
 git -C $HOME\open-skills pull --ff-only
 ```
 
 ```bash
-git clone https://github.com/dewdad/open-skills ~/open-skills
+git clone --depth 1 https://github.com/dewdad/open-skills ~/open-skills
 git -C ~/open-skills pull --ff-only
 ```
 
@@ -265,8 +307,8 @@ python -m configurator ingest --profile my-general
 
 `base/general` reproduces a free, no-lock-in model chain that every persona inherits by default:
 
-- **Primary:** `zenmux / anthropic/claude-sonnet-5-free`
-- **Fallbacks (quality-first, throughput-last):** `opencode-zen/big-pickle` → `nvidia/glm-5.2` → `nous / stepfun/step-3.7-flash:free`
+- **Primary:** `opencode-zen / big-pickle` (128k context; opencode-zen is a built-in provider)
+- **Fallbacks (quality-first, throughput-last):** `nvidia/glm-5.2` → `zenmux / anthropic/claude-sonnet-5-free` → `nous / stepfun/step-3.7-flash:free`
 - **Vision aux:** `gemini/gemini-3.1-flash` with a nous free fallback
 
 Four independent providers, every provider key `required: false` — **any one key yields a working agent** with no per-call paid services on the default path.
@@ -297,15 +339,16 @@ hermes-setup/
 
 ---
 
-## The three docs — who reads what
+## The docs — who reads what
 
 | Document | Audience | Purpose |
 | --- | --- | --- |
+| `PREREQUISITES.md` | **Anyone before installing a persona** | The one-time host setup checklist: install Hermes, complete the free Nous Portal subscription + login, install Node.js + git, and the optional Beeper / Google extras. Do this first. |
 | Root `AGENTS.md` | **Contributors and coding agents editing this repo** | The DOX rail — binding work contracts for the source tree (secret hygiene, three-bucket model, determinism, config schema, per-directory child rails). |
 | `AGENT_SETUP.md` | **End users and agents installing a persona** | Two step-by-step runbooks (named profile via `hermes profile install`; default profile via `bootstrap`). Does not describe how to change the source tree. |
 | `dist/<persona>/README.md` | **Someone installing this specific persona** | Install command, `.env.EXAMPLE` pointer, and the referenced-skill `hermes skills install …` block (auto-installed by the apply flow) for that persona. |
 
-If you are extending this repo, start at root `AGENTS.md`. If you are installing a persona, start at `AGENT_SETUP.md` or the per-distribution README.
+If you are installing a persona, start at `PREREQUISITES.md`, then `AGENT_SETUP.md` or the per-distribution README. If you are extending this repo, start at root `AGENTS.md`.
 
 ---
 

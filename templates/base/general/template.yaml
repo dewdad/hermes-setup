@@ -10,19 +10,19 @@ distribution:
 # Reproduces the verified live 0-cost chain: any single provider key yields a working agent.
 config:
   model:
-    provider: zenmux
-    default: anthropic/claude-sonnet-5-free
-    max_tokens: 8192
+    provider: opencode-zen
+    default: big-pickle
+    max_tokens: 128000
     base_url: ''
   providers:
     zenmux:
       base_url: https://zenmux.ai/api/v1
       key_env: ZENMUX_API_KEY
   fallback_providers:
-    - provider: opencode-zen
-      model: big-pickle
     - provider: nvidia
       model: glm-5.2
+    - provider: zenmux
+      model: anthropic/claude-sonnet-5-free
     - provider: nous
       model: stepfun/step-3.7-flash:free
   delegation:
@@ -35,9 +35,23 @@ config:
     inherit_mcp_toolsets: true
   agent:
     verify_on_stop: false
+  # Zero paid Nous Tool Gateway (Portal) routing by default. Hermes' rule: use_gateway:false uses a
+  # direct backend if one exists and only *falls back* to the paid gateway when none does — so each
+  # gateway-backed tool is both forced off the gateway AND pinned to a free/keyless direct backend,
+  # leaving no path to paid routing. web -> keyless DuckDuckGo; browser -> local Chromium. Both are
+  # complemented by the keyless open-skills web-search-api + browser-automation-agent skills below.
+  # image_gen/tts ship no free local backend; the gateway stays off (they simply need a direct key
+  # if you ever opt to use them — never a paid-gateway call on the default, subscription-less path).
   web:
-    backend: firecrawl
-    use_gateway: true
+    backend: ddgs
+    use_gateway: false
+  browser:
+    backend: local
+    use_gateway: false
+  image_gen:
+    use_gateway: false
+  tts:
+    use_gateway: false
   auxiliary:
     vision:
       provider: gemini
@@ -57,11 +71,11 @@ config:
 
 # Every provider/fallback key is optional — any ONE yields a working, 0-cost agent.
 env:
-  - name: ZENMUX_API_KEY
-    description: Primary provider (zenmux) — top up credits and create a Pay As You Go key at https://zenmux.ai/platform/pay-as-you-go; restrict the key to free models if you want to use only free-tier quota and avoid spending paid credits.
-    required: false
   - name: OPENCODE_ZEN_API_KEY
-    description: Fallback provider (opencode-zen / big-pickle) — sign in and create/copy a Zen API key at https://opencode.ai/auth.
+    description: Primary provider (opencode-zen / big-pickle) — sign in and create/copy a Zen API key at https://opencode.ai/auth.
+    required: false
+  - name: ZENMUX_API_KEY
+    description: Fallback + delegation provider (zenmux / claude-sonnet-5-free / claude-fable-5-free) — top up credits and create a Pay As You Go key at https://zenmux.ai/platform/pay-as-you-go; restrict the key to free models to use only free-tier quota.
     required: false
   - name: NVIDIA_API_KEY
     description: Fallback provider (nvidia / glm-5.2) — generate a NVIDIA Build API key at https://build.nvidia.com/settings/api-keys.
@@ -74,19 +88,54 @@ soul:
   fragments:
     - identity.md
     - style.md
+    - skills.md
     - safety.md
 
 skills:
   bundled: none
+  # Bucket 2 — live shared checkouts, silently skipped if absent. `~/open-skills/skills` is the
+  # bonus "everything else" layer; `~/multi-gws-cli` is the Tier-1 Google Workspace CLI clone
+  # (guided clone+build via /finish-setup). The compiler also prepends the profile-relative
+  # `meta-skills` dir (which carries /finish-setup) to external_dirs at emit time.
   external_dirs:
     - ~/open-skills/skills
+    - ~/multi-gws-cli
 
-# Bucket 3 (referenced post-install, auto-installed by the apply flow): free web search so the
-# `web` toolset works with no FIRECRAWL_API_KEY. Verified real via `hermes skills search duckduckgo`
-# → `official/research/duckduckgo-search` (official source, builtin trust; free to run locally).
+# Bucket 3 (referenced post-install, auto-installed by the apply flow). Every id verified real via
+# `hermes skills inspect` (2026-07-08). Tier 0 = free-to-run + installed on apply, a working agent
+# depends only on these (browser/web are keyless; free chat needs one free-tier key or a Nous
+# sign-in); Tier 1 = guided opt-in (needs a companion app), never required.
+#   - open-skills flagship (skills.sh / dewdad/open-skills): browser automation + web research.
+#     `web-search-api` is the preferred SearXNG multi-engine search; `duckduckgo-search` (official
+#     trust) stays as the keyless fallback wired into the `web` toolset for when public SearXNG
+#     instances are unhealthy.
+#   - beeper-desktop-api (Tier 1): cross-platform messaging; needs the free Beeper Desktop app.
 post_install:
+  - id: skills-sh/dewdad/open-skills/web-search-api
+    note: Preferred web search — free SearXNG multi-engine (Google/Bing/DDG/70+). Keyless.
+    tier: 0
+  - id: skills-sh/dewdad/open-skills/browser-automation-agent
+    note: Browser automation via agent-browser CLI. Free, keyless.
+    tier: 0
+  - id: skills-sh/dewdad/open-skills/using-web-scraping
+    note: Scrape public web content with headless Chrome. Free, keyless.
+    tier: 0
+  - id: skills-sh/dewdad/open-skills/crawl-websites-at-scale
+    note: Bulk crawl with Scrapy. Free, keyless.
+    tier: 0
   - id: official/research/duckduckgo-search
-    note: Keyless DuckDuckGo web search fallback for the `web` toolset. Official, free to run.
+    note: Keyless DuckDuckGo fallback for the `web` toolset when SearXNG instances are down.
+    tier: 0
+  - id: skills-sh/dewdad/beeper-desktop-api-skill/beeper-desktop-api
+    note: Cross-platform messaging (WhatsApp/iMessage/Telegram/…). Needs the free Beeper Desktop app.
+    tier: 1
+
+# Feature 4 (discovery layer a): general "discover more skills" catalogue links surfaced in
+# /finish-setup. URLs only — no secrets. locale/il appends IL-specific catalogues (set-union by url).
+discovery:
+  - label: Skills Hub (skills.sh)
+    url: https://skills.sh
+    note: Browse the community + official skill registries Hermes installs from.
 
 # Opt-in daily pull of the shared external skills checkout. Hermes never auto-schedules
 # distribution cron — the user enables it explicitly. Absence of ~/open-skills is tolerated.
@@ -97,3 +146,19 @@ cron:
     args: ["-C", "~/open-skills", "pull", "--ff-only"]
     enabled: false
     description: Daily fast-forward pull of the shared ~/open-skills checkout (opt-in).
+
+# Local tools provisioned for every user (setup_steps — installed + configured by the apply flow,
+# NOT a `hermes skills install`). The compiler emits per-platform setup.steps.{sh,ps1}; bootstrap
+# runs the matching one (gated, idempotent, failure-tolerant), and /finish-setup shows the manual
+# commands. RTK (Rust Token Killer, rtk-ai/rtk, Apache-2.0) is a free, keyless, local CLI that
+# compresses git/cargo/pytest/docker/... output 60-90% before it reaches the model;
+# `rtk init --agent hermes` wires its Python plugin into $HERMES_HOME/plugins/rtk-rewrite/. Tier 0.
+setup_steps:
+  - id: rtk
+    label: RTK (Rust Token Killer)
+    tier: 0
+    note: Compresses git/cargo/pytest/docker/... output 60-90% before it reaches the model. Free, keyless, local.
+    posix_check: 'test -d "${HERMES_HOME:-$HOME/.hermes}/plugins/rtk-rewrite"'
+    posix_run: 'command -v rtk >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh; PATH="$HOME/.local/bin:$PATH" rtk init --agent hermes'
+    windows_check: 'Test-Path (Join-Path $env:HERMES_HOME ''plugins\rtk-rewrite'')'
+    windows_run: '$d="$env:USERPROFILE\.local\bin"; New-Item -ItemType Directory -Force -Path $d | Out-Null; if (-not (Get-Command rtk -ErrorAction SilentlyContinue)) { $z="$env:TEMP\rtk.zip"; Invoke-WebRequest -Uri https://github.com/rtk-ai/rtk/releases/latest/download/rtk-x86_64-pc-windows-msvc.zip -OutFile $z; Expand-Archive -Path $z -DestinationPath $d -Force }; $env:PATH="$d;$env:PATH"; rtk init --agent hermes'

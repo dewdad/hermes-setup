@@ -20,9 +20,20 @@ from configurator.manifest import (
 )
 from configurator.model import Bundle, Template
 from configurator.readme import build_readme
-from configurator.secretscan import scan_config
+from configurator.secretscan import scan_config, scan_text
+from configurator.setup_scripts import (
+    POSIX_SCRIPT_NAME,
+    WINDOWS_SCRIPT_NAME,
+    build_setup_script_posix,
+    build_setup_script_windows,
+)
+from configurator.setup_skill import (
+    FINISH_SETUP_NAME,
+    META_SKILLS_DIRNAME,
+    build_finish_setup_skill,
+)
 from configurator.soul import compose_soul
-from configurator.yamlio import YamlMap, dump_json, dump_yaml, write_text
+from configurator.yamlio import YamlMap, YamlValue, dump_json, dump_yaml, write_text
 
 _GITIGNORE = """\
 # Hermes profile distribution — safe artifacts only. Never commit secrets or runtime state.
@@ -47,13 +58,21 @@ def _slug(name: str) -> str:
 
 
 def _build_config(template: Template) -> YamlMap:
-    """Merge the config fragment with the config version and skills.external_dirs from the template."""
+    """Merge the config fragment with the config version and skills.external_dirs from the template.
+
+    The generated ``meta-skills`` dir (which carries ``finish-setup``) is prepended to
+    ``external_dirs`` as a profile-relative path so Hermes discovers and slash-registers it. It is
+    kept out of ``skills/`` on purpose so ``hermes profile update`` never touches user skills.
+    """
     config: YamlMap = {**template.config, "_config_version": CONFIG_VERSION}
-    if template.skills.external_dirs:
-        existing = config.get("skills")
-        skills_cfg: YamlMap = dict(existing) if isinstance(existing, dict) else {}
-        skills_cfg["external_dirs"] = list(template.skills.external_dirs)
-        config["skills"] = skills_cfg
+    external: list[YamlValue] = [META_SKILLS_DIRNAME]
+    for entry in template.skills.external_dirs:
+        if entry not in external:
+            external.append(entry)
+    existing = config.get("skills")
+    skills_cfg: YamlMap = dict(existing) if isinstance(existing, dict) else {}
+    skills_cfg["external_dirs"] = external
+    config["skills"] = skills_cfg
     return config
 
 
@@ -116,9 +135,25 @@ def emit_distribution(
         _write_bundle(out_dir, bundle)
     _copy_skills(out_dir, skills)
 
+    # The generated finish-setup meta-skill (the reference-only carve-out). Scanned for secrets
+    # before writing, like every other emitted artifact. Lives under meta-skills/ (NOT skills/) so
+    # `hermes profile update` refreshes it without wiping the user's installed skills.
+    finish_setup = build_finish_setup_skill(template)
+    scan_text(finish_setup, where=f"{META_SKILLS_DIRNAME}/{FINISH_SETUP_NAME}/SKILL.md")
+    write_text(out_dir / META_SKILLS_DIRNAME / FINISH_SETUP_NAME / "SKILL.md", finish_setup)
+
     if template.skills.include or template.bundles:
         write_text(out_dir / "skills.sh.json", dump_json(build_skills_sh(template)))
     if template.post_install:
         write_text(out_dir / "skills.install.json", dump_json(build_skills_install(template)))
+    # Generated local-tool setup scripts (e.g. RTK). Secret-scanned before writing like every other
+    # artifact; the apply-flow bootstrap runs the platform-matched one, gated by user confirmation.
+    if template.setup_steps:
+        posix_script = build_setup_script_posix(template.setup_steps)
+        windows_script = build_setup_script_windows(template.setup_steps)
+        scan_text(posix_script, where=POSIX_SCRIPT_NAME)
+        scan_text(windows_script, where=WINDOWS_SCRIPT_NAME)
+        write_text(out_dir / POSIX_SCRIPT_NAME, posix_script)
+        write_text(out_dir / WINDOWS_SCRIPT_NAME, windows_script)
     write_text(out_dir / ".gitignore", _GITIGNORE)
     write_text(out_dir / "README.md", build_readme(template))

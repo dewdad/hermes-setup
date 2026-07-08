@@ -48,7 +48,9 @@ def build_manifest(template: Template) -> YamlMap:
         manifest["env_requires"] = _env_requires(template.env)
     # Own the generated README (carries the post-install block) so `profile update` refreshes it;
     # own skill-bundles/skills.sh.json when emitted so curated bundles + hub labels stay current.
-    owned: list[str] = [*DEFAULT_DIST_OWNED, "README.md"]
+    # `meta-skills` (the generated finish-setup skill) is always emitted and distribution-owned; it
+    # is deliberately NOT `skills` — the user's installed skills stay user-owned and untouched.
+    owned: list[str] = [*DEFAULT_DIST_OWNED, "README.md", "meta-skills"]
     if any(ref.vendored for ref in template.skills.include):
         owned.append("skills")
     if template.skills.include or template.bundles:
@@ -57,6 +59,10 @@ def build_manifest(template: Template) -> YamlMap:
         owned.append("skill-bundles")
     if template.post_install:
         owned.append("skills.install.json")
+    # The generated per-platform setup scripts (local-tool provisioning, e.g. RTK) are generated
+    # infrastructure like the meta-skill — distribution-owned so `profile update` refreshes them.
+    if template.setup_steps:
+        owned.extend(("setup.steps.ps1", "setup.steps.sh"))
     sorted_owned: list[YamlValue] = [*sorted(owned)]
     manifest["distribution_owned"] = sorted_owned
     return manifest

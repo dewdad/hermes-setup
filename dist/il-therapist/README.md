@@ -23,15 +23,36 @@ security scan — so applying the persona lands them installed. To install manua
 after `hermes profile install`), run:
 
 ```bash
+hermes skills install skills-sh/dewdad/open-skills/web-search-api
+hermes skills install skills-sh/dewdad/open-skills/browser-automation-agent
+hermes skills install skills-sh/dewdad/open-skills/using-web-scraping
+hermes skills install skills-sh/dewdad/open-skills/crawl-websites-at-scale
+hermes skills install skills-sh/dewdad/beeper-desktop-api-skill/beeper-desktop-api
+hermes skills install skills-sh/skills-il/localization/hebrew-rtl-best-practices
+hermes skills install skills-sh/skills-il/localization/hebrew-document-generator
 hermes skills install skills-sh/anthropics/skills/docx
 hermes skills install skills-sh/anthropics/skills/pdf
 hermes skills install skills-sh/anthropics/skills/pptx
 hermes skills install skills-sh/anthropics/skills/xlsx
-hermes skills install skills-sh/skills-il/localization/hebrew-rtl-best-practices
 ```
 
-- `skills-sh/anthropics/skills/docx` — Word documents (Hebrew letters, forms). Source-available; free to run locally.
-- `skills-sh/anthropics/skills/pdf` — PDF generation/extraction. Source-available; free to run locally.
-- `skills-sh/anthropics/skills/pptx` — Presentations. Source-available; free to run locally.
+- `skills-sh/dewdad/open-skills/web-search-api` — Preferred web search — free SearXNG multi-engine (Google/Bing/DDG/70+). Keyless.
+- `skills-sh/dewdad/open-skills/browser-automation-agent` — Browser automation via agent-browser CLI. Free, keyless.
+- `skills-sh/dewdad/open-skills/using-web-scraping` — Scrape public web content with headless Chrome. Free, keyless.
+- `skills-sh/dewdad/open-skills/crawl-websites-at-scale` — Bulk crawl with Scrapy. Free, keyless.
+- `skills-sh/dewdad/beeper-desktop-api-skill/beeper-desktop-api` — Cross-platform messaging (WhatsApp/iMessage/Telegram/…). Needs the free Beeper Desktop app.
+- `skills-sh/skills-il/localization/hebrew-rtl-best-practices` — Hebrew/RTL best-practices from agentskills.co.il (skills-il). Free to run.
+- `skills-sh/skills-il/localization/hebrew-document-generator` — IL-native Hebrew PDF/DOCX/PPTX with correct RTL + bidi. Preferred for Hebrew output.
+- `skills-sh/anthropics/skills/docx` — Word documents (non-Hebrew fallback). Source-available; free to run locally.
+- `skills-sh/anthropics/skills/pdf` — PDF generation/extraction (non-Hebrew fallback). Source-available; free to run locally.
+- `skills-sh/anthropics/skills/pptx` — Presentations (non-Hebrew fallback). Source-available; free to run locally.
 - `skills-sh/anthropics/skills/xlsx` — Spreadsheets. Source-available; free to run locally.
-- `skills-sh/skills-il/localization/hebrew-rtl-best-practices` — Community Hebrew/RTL best-practices from the skills-il tap. Free to run.
+
+## Local tools (auto-set-up on apply)
+
+Beyond skills, this distribution provisions local tools that install a standalone binary and
+wire a Hermes plugin. The apply flow (`bootstrap.ps1` / `bootstrap.sh`) runs the generated
+`setup.steps.ps1` / `setup.steps.sh` — with your confirmation, idempotently, tolerating any
+failure. Each is free-to-run and keyless unless marked Tier 1.
+
+- **RTK (Rust Token Killer)** — Compresses git/cargo/pytest/docker/... output 60-90% before it reaches the model. Free, keyless, local.

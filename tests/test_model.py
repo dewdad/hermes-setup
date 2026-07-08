@@ -91,5 +91,37 @@ class ParseValidation(unittest.TestCase):
         self.assertEqual(tpl.skills.bundled, ("github-pr-workflow", "test-driven-development"))
 
 
+class ParseSetupSteps(unittest.TestCase):
+    def test_setup_step_fields_parsed(self) -> None:
+        tpl = parse_template({
+            "name": "general", "kind": "base",
+            "setup_steps": [{
+                "id": "rtk", "label": "RTK", "note": "n", "tier": 0,
+                "posix_check": "pc", "posix_run": "pr",
+                "windows_check": "wc", "windows_run": "wr",
+            }],
+        })
+        step = tpl.setup_steps[0]
+        self.assertEqual(step.id, "rtk")
+        self.assertEqual((step.posix_check, step.posix_run), ("pc", "pr"))
+        self.assertEqual((step.windows_check, step.windows_run), ("wc", "wr"))
+
+    def test_setup_step_defaults(self) -> None:
+        tpl = parse_template({
+            "name": "general", "kind": "base", "setup_steps": [{"id": "x"}],
+        })
+        step = tpl.setup_steps[0]
+        self.assertEqual((step.label, step.note, step.tier), ("", "", 0))
+        self.assertEqual(step.posix_run, "")
+
+    def test_setup_step_missing_id_raises(self) -> None:
+        with self.assertRaises(TemplateError):
+            parse_template({"name": "x", "kind": "base", "setup_steps": [{"label": "no id"}]})
+
+    def test_setup_steps_not_a_list_raises(self) -> None:
+        with self.assertRaises(TemplateError):
+            parse_template({"name": "x", "kind": "base", "setup_steps": {"id": "x"}})
+
+
 if __name__ == "__main__":
     unittest.main()

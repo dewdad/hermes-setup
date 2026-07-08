@@ -9,6 +9,12 @@ It contains two independent runbooks. Pick one:
 
 Both runbooks assume `dist/<persona>/` already exists. If it does not, run `python -m configurator compile <persona>` first (or `python -m configurator compile --all`).
 
+> **Prerequisites first.** Before either runbook, the host needs the one-time setup in
+> [`PREREQUISITES.md`](PREREQUISITES.md): Hermes installed, the **free Nous Portal subscription** +
+> `hermes setup --portal` login (the baseline that powers free chat), and **Node.js + git** (the
+> bootstrap flow clones + builds the Google Workspace CLI). Beeper Desktop and a Google account are
+> optional Tier-1 extras. All free to run.
+
 ---
 
 ## Ground truth every agent must respect
@@ -32,15 +38,15 @@ Before doing anything, read these facts. They apply to **both** runbooks.
 
 ---
 
-## Optional prep step (both runbooks)
+## open-skills provisioning (both runbooks)
 
-`base/general` and its descendants emit `skills.external_dirs: [~/open-skills/skills]`. Cloning that repo is **optional** — Hermes silently skips missing external dirs, so runbook success does not depend on it. If you want the shared skills available, do this once:
+`base/general` and its descendants emit `skills.external_dirs: [~/open-skills/skills]`. Both apply paths provision this checkout by default — the `bootstrap` scripts clone/pull it (skip with `-SkipOpenSkills` / `--skip-open-skills`), and `/finish-setup` runs the same clone. It stays fully tolerated: Hermes silently skips a missing external dir, so runbook success never depends on it. The provisioning command (safe to run manually or re-run):
 
 ```powershell
 if (Test-Path "$HOME\open-skills") {
   git -C "$HOME\open-skills" pull --ff-only
 } else {
-  git clone https://github.com/dewdad/open-skills "$HOME\open-skills"
+  git clone --depth 1 https://github.com/dewdad/open-skills "$HOME\open-skills"
 }
 ```
 
@@ -140,7 +146,9 @@ Use this when you want the persona isolated from the default profile. Every name
 
    Missing provider keys are **warnings, not errors** — they are expected until the user fills in `.env`. Any *config-level* error must be reported and stopped on.
 
-7. **Referenced skills.** This persona authors no skills — it *references* verified-real skill ids from trusted registries, listed machine-readably in `dist/<persona>/skills.install.json` and as a copy-paste block in `dist/<persona>/README.md`. `hermes profile install` does **not** auto-install them, so run each line from the README block as-is (`hermes skills install …` / `hermes skills tap add …`) — or use Runbook B's bootstrap, which auto-installs them. Do **not** invent new skill IDs.
+7. **Referenced skills — prefer `/finish-setup`.** This persona authors no skills except one generated onboarding skill: `hermes profile install` lands `meta-skills/finish-setup/SKILL.md`, which Hermes registers as the **`/finish-setup`** slash command. Because `hermes profile install` does **not** auto-install the *referenced* skills, the recommended completion path is to open the profile (`hermes -p my-general`) and run **`/finish-setup`** — it (re)installs everything in `dist/<persona>/skills.install.json` (grouped Tier-0 vs Tier-1), offers optional keys + Tier-1 extras, and health-checks. Alternatively run each `hermes skills install …` / `hermes skills tap add …` line from the README block as-is, or use Runbook B's bootstrap (which auto-installs them). Do **not** invent new skill IDs.
+
+   > **Tier 0 is free to run.** Once the Tier-0 skills install, browser automation + web research/scraping work **keyless**. Free chat runs on a no-per-call-cost model chain but needs **one** free-tier provider key (or a free Nous sign-in via `hermes auth`) — with zero keys the chain returns HTTP 403. `/finish-setup` walks you through that one key. Tier-1 (Google Workspace, messaging) is a guided opt-in and never required.
 
 8. **Updates later.** To pick up template changes without touching user-owned files:
 
@@ -219,9 +227,11 @@ Use this when you want the persona to *become* your default Hermes install (sing
    | `SOUL.md` | written | **preserved** unless it still contains the unconfigured marker |
    | `skills/` | copied only if the dist ships one | **merged** — other skills never deleted (reference-only personas ship no `skills/`, so this is normally a no-op) |
    | Referenced skills | auto-installed from `skills.install.json` (with your confirmation) | same — `hermes skills install` / `tap add`, failure-tolerant |
+   | `~/open-skills` | cloned (bonus catalogue; needs git) | fast-forward pull |
+   | `~/multi-gws-cli` | cloned + `npm install` + `npm run build` (Google Workspace CLI; needs Node.js + git) | fast-forward pull + rebuild |
    | `.env` | created from generated `.env.EXAMPLE` | **never overwritten**; missing keys are reported |
 
-   Flags: `-DryRun` / `--dry-run`, `-Force` / `--force`, `-SkipBackup` / `--skip-backup`, `-SkipSkills` / `--skip-skills`, `-SkipOpenSkills` / `--skip-open-skills`, `-SkipSkillsInstall` / `--skip-skills-install`, `-Yes` / `--yes` (auto-confirm the referenced-skill install prompt), `-HermesHome PATH` / `--hermes-home PATH`. The template flag is `-Template <name>` / `--template <name>` and defaults to `base/general` — do **not** invent other flag names.
+   Flags: `-DryRun` / `--dry-run`, `-Force` / `--force`, `-SkipBackup` / `--skip-backup`, `-SkipSkills` / `--skip-skills`, `-SkipOpenSkills` / `--skip-open-skills`, `-SkipGws` / `--skip-gws` (skip the `~/multi-gws-cli` Google Workspace clone+build), `-SkipSkillsInstall` / `--skip-skills-install`, `-Yes` / `--yes` (auto-confirm the referenced-skill install prompt), `-HermesHome PATH` / `--hermes-home PATH`. The template flag is `-Template <name>` / `--template <name>` and defaults to `base/general` — do **not** invent other flag names.
 
 5. **Fill in `.env`.** Bootstrap prints the resolved path. Open it and fill in the keys you need. All `base/general` provider keys are optional — any one is enough.
 

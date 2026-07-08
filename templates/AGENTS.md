@@ -35,9 +35,25 @@ inheritance) the `configurator/` compiler resolves into native Hermes profile di
     names the referenced skills install as (e.g. `docx`, not a fabricated id).
   - `mcp`: object (deep-merged).
   - `cron[]`: list of scheduled tasks.
-  - `post_install[]`: `{id, note, tap}` — the primary skill-sourcing surface. Emitted to the
+  - `post_install[]`: `{id, note, tap, tier}` — the primary skill-sourcing surface. Emitted to the
     distribution README **and** to a machine-readable `skills.install.json`; the apply flow
     (`bootstrap.ps1`/`bootstrap.sh`) auto-runs `hermes skills install <id>` / `tap add <id>` from it.
+    `tier` (int, default 0) splits capabilities by auth friction: **0** = free-to-run, on the
+    critical path (a working agent depends only on these; browser/web keyless, free chat needs one
+    free-tier key or a Nous sign-in); **1** = guided opt-in (build/OAuth/app), never required. `/finish-setup` groups the list by tier. Tier-0 open-skills flagship ids
+    (`skills-sh/dewdad/open-skills/*`) and IL ids (`skills-sh/skills-il/<category-repo>/<skill>`)
+    live here; payment-gateway / bank-connector (`tax-and-finance`) IL skills are excluded.
+  - `discovery[]`: each `{label, url, note}` — "discover more skills" catalogue links (URLs only,
+    no secrets) rendered into `/finish-setup`. `base` carries general entries (skills.sh); `locale/il`
+    appends IL catalogues (agentskills.co.il, Claude-Israel). Merged base→locale by set-union on url.
+  - `setup_steps[]`: each `{id, label, note, tier, posix_check, posix_run, windows_check,
+    windows_run}` — local-tool provisioning that is **not** a `hermes skills install` (e.g. RTK's
+    binary + `rtk init --agent hermes`). The compiler generates per-platform `setup.steps.{sh,ps1}`
+    from these; the apply flow (`bootstrap.*`) runs the matching one (gated, idempotent — the
+    `*_run` command runs only when the `*_check` reports the tool not yet set up — and
+    failure-tolerant), and `/finish-setup` shows the manual commands. `tier` mirrors `post_install`
+    (0 = free/on the apply path; 1 = guided opt-in). Commands carry no secrets (secret-scanned on
+    emit). `base/general` ships the RTK step (Tier 0, free/keyless/local).
 - **Merge semantics**:
   - Maps deep-merge child-over-parent; scalars override.
   - Config lists set-union across layers; use `{"!remove": <value>}` markers to drop an inherited
@@ -45,6 +61,10 @@ inheritance) the `configurator/` compiler resolves into native Hermes profile di
   - Skills: `include` dedupes by `(source, id)`; `exclude` matches by skill name (last path
     segment) and prunes **both** inherited `include[]` skills **and** inherited `post_install[]`
     references (e.g. `il-therapist` excludes `duckduckgo-search` to drop the inherited web search).
+  - `post_install[]` dedupes by `id` (child overrides, carrying its `tier`); `discovery[]` set-unions
+    by `url` (child overrides an entry with the same url); both preserve base→locale→persona order.
+  - `setup_steps[]` set-unions by `id` (child overrides), preserving base→locale→persona order;
+    `skills.exclude` prunes a step by its `id` (like it prunes `post_install[]`).
   - Layer order is `base → locale → persona`; cycles are rejected by the loader.
 - **Skill buckets** (root contract) — reference-only: personas ship no `skills/` content.
   - **Bucket 3 (default path)** — `post_install[]` ids referenced from trusted registries; the apply

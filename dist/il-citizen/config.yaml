@@ -11,6 +11,9 @@ auxiliary:
     model: gemini-3.1-flash
     provider: gemini
     timeout: 90
+browser:
+  backend: local
+  use_gateway: false
 delegation:
   inherit_mcp_toolsets: true
   max_concurrent_children: 3
@@ -22,17 +25,19 @@ delegation:
 display:
   tool_progress: all
 fallback_providers:
-- model: big-pickle
-  provider: opencode-zen
 - model: glm-5.2
   provider: nvidia
+- model: anthropic/claude-sonnet-5-free
+  provider: zenmux
 - model: stepfun/step-3.7-flash:free
   provider: nous
+image_gen:
+  use_gateway: false
 model:
   base_url: ''
-  default: anthropic/claude-sonnet-5-free
-  max_tokens: 8192
-  provider: zenmux
+  default: big-pickle
+  max_tokens: 128000
+  provider: opencode-zen
 plugins:
   enabled: []
 providers:
@@ -43,7 +48,11 @@ security:
   redact_secrets: true
 skills:
   external_dirs:
+  - meta-skills
   - ~/open-skills/skills
+  - ~/multi-gws-cli
+tts:
+  use_gateway: false
 web:
-  backend: firecrawl
-  use_gateway: true
+  backend: ddgs
+  use_gateway: false

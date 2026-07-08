@@ -23,11 +23,30 @@ security scan — so applying the persona lands them installed. To install manua
 after `hermes profile install`), run:
 
 ```bash
+hermes skills install skills-sh/dewdad/open-skills/web-search-api
+hermes skills install skills-sh/dewdad/open-skills/browser-automation-agent
+hermes skills install skills-sh/dewdad/open-skills/using-web-scraping
+hermes skills install skills-sh/dewdad/open-skills/crawl-websites-at-scale
 hermes skills install official/research/duckduckgo-search
+hermes skills install skills-sh/dewdad/beeper-desktop-api-skill/beeper-desktop-api
 hermes skills install skills-sh/anthropics/skills/pdf
 hermes skills install skills-sh/anthropics/skills/docx
 ```
 
-- `official/research/duckduckgo-search` — Keyless DuckDuckGo web search fallback for the `web` toolset. Official, free to run.
+- `skills-sh/dewdad/open-skills/web-search-api` — Preferred web search — free SearXNG multi-engine (Google/Bing/DDG/70+). Keyless.
+- `skills-sh/dewdad/open-skills/browser-automation-agent` — Browser automation via agent-browser CLI. Free, keyless.
+- `skills-sh/dewdad/open-skills/using-web-scraping` — Scrape public web content with headless Chrome. Free, keyless.
+- `skills-sh/dewdad/open-skills/crawl-websites-at-scale` — Bulk crawl with Scrapy. Free, keyless.
+- `official/research/duckduckgo-search` — Keyless DuckDuckGo fallback for the `web` toolset when SearXNG instances are down.
+- `skills-sh/dewdad/beeper-desktop-api-skill/beeper-desktop-api` — Cross-platform messaging (WhatsApp/iMessage/Telegram/…). Needs the free Beeper Desktop app.
 - `skills-sh/anthropics/skills/pdf` — Read/produce legal PDFs. Source-available; free to run locally.
 - `skills-sh/anthropics/skills/docx` — Draft legal documents in Word. Source-available; free to run locally.
+
+## Local tools (auto-set-up on apply)
+
+Beyond skills, this distribution provisions local tools that install a standalone binary and
+wire a Hermes plugin. The apply flow (`bootstrap.ps1` / `bootstrap.sh`) runs the generated
+`setup.steps.ps1` / `setup.steps.sh` — with your confirmation, idempotently, tolerating any
+failure. Each is free-to-run and keyless unless marked Tier 1.
+
+- **RTK (Rust Token Killer)** — Compresses git/cargo/pytest/docker/... output 60-90% before it reaches the model. Free, keyless, local.

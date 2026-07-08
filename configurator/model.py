@@ -97,11 +97,48 @@ class Bundle:
 
 @dataclass(frozen=True, slots=True)
 class PostInstallRef:
-    """A referenced (not vendored) skill/tap recorded in the distribution README."""
+    """A referenced (not vendored) skill/tap recorded in the distribution README.
+
+    ``tier`` splits capabilities by auth friction so the generated ``/finish-setup`` meta-skill can
+    group them: tier 0 = zero-config, free, installed on apply (a working agent depends only on
+    these); tier 1 = guided opt-in (needs a build / OAuth / external app), never required.
+    """
 
     id: str
     note: str = ""
     is_tap: bool = False
+    tier: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryRef:
+    """One 'discover more skills' catalogue entry surfaced in ``/finish-setup`` (URLs only)."""
+
+    label: str
+    url: str
+    note: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class SetupStep:
+    """A local-tool provisioning step the apply flow runs that is NOT a ``hermes skills install``.
+
+    ``post_install[]`` only covers skills/taps the bootstrap installs via ``hermes skills install`` /
+    ``tap add``. A ``SetupStep`` covers everything else — installing a standalone binary + wiring its
+    Hermes plugin (e.g. RTK's ``rtk init --agent hermes``). Commands are platform-split; the ``*_run``
+    command executes only when the matching ``*_check`` command exits non-zero (so re-apply is
+    idempotent). ``tier`` groups it in ``/finish-setup`` exactly like ``post_install`` (0 = free,
+    on the apply path; 1 = guided opt-in). Commands carry no secrets and are secret-scanned on emit.
+    """
+
+    id: str
+    label: str = ""
+    note: str = ""
+    tier: int = 0
+    posix_check: str = ""
+    posix_run: str = ""
+    windows_check: str = ""
+    windows_run: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,4 +175,6 @@ class Template:
     mcp: YamlMap = field(default_factory=dict)
     cron: tuple[YamlMap, ...] = ()
     post_install: tuple[PostInstallRef, ...] = ()
+    discovery: tuple[DiscoveryRef, ...] = ()
+    setup_steps: tuple[SetupStep, ...] = ()
     source_dir: Path | None = None

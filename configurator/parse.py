@@ -11,8 +11,10 @@ from pathlib import Path
 from configurator.errors import TemplateError
 from configurator.model import (
     Bundle,
+    DiscoveryRef,
     EnvVar,
     PostInstallRef,
+    SetupStep,
     SkillRef,
     SkillsSpec,
     SkillSourceKind,
@@ -153,10 +155,58 @@ def _parse_post_install(raw: YamlValue, name: str) -> tuple[PostInstallRef, ...]
     for entry in raw:
         emap = _as_map(entry, name, "post_install")
         note = emap.get("note", "")
+        raw_tier = emap.get("tier", 0)
+        tier = raw_tier if isinstance(raw_tier, int) and not isinstance(raw_tier, bool) else 0
         out.append(PostInstallRef(
             id=_require_str(emap, "id", name),
             note=note if isinstance(note, str) else "",
             is_tap=bool(emap.get("tap", False)),
+            tier=tier,
+        ))
+    return tuple(out)
+
+
+def _parse_discovery(raw: YamlValue, name: str) -> tuple[DiscoveryRef, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise TemplateError(template=name, field="discovery", reason="must be a list")
+    out: list[DiscoveryRef] = []
+    for entry in raw:
+        emap = _as_map(entry, name, "discovery")
+        note = emap.get("note", "")
+        out.append(DiscoveryRef(
+            label=_require_str(emap, "label", name),
+            url=_require_str(emap, "url", name),
+            note=note if isinstance(note, str) else "",
+        ))
+    return tuple(out)
+
+
+def _parse_setup_steps(raw: YamlValue, name: str) -> tuple[SetupStep, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise TemplateError(template=name, field="setup_steps", reason="must be a list")
+    out: list[SetupStep] = []
+    for entry in raw:
+        emap = _as_map(entry, name, "setup_steps")
+        raw_tier = emap.get("tier", 0)
+        tier = raw_tier if isinstance(raw_tier, int) and not isinstance(raw_tier, bool) else 0
+
+        def _str(key: str) -> str:
+            value = emap.get(key, "")
+            return value if isinstance(value, str) else ""
+
+        out.append(SetupStep(
+            id=_require_str(emap, "id", name),
+            label=_str("label"),
+            note=_str("note"),
+            tier=tier,
+            posix_check=_str("posix_check"),
+            posix_run=_str("posix_run"),
+            windows_check=_str("windows_check"),
+            windows_run=_str("windows_run"),
         ))
     return tuple(out)
 
@@ -198,5 +248,7 @@ def parse_template(data: YamlMap, source_dir: Path | None = None) -> Template:
         mcp=_as_map(data.get("mcp"), name, "mcp"),
         cron=cron,
         post_install=_parse_post_install(data.get("post_install"), name),
+        discovery=_parse_discovery(data.get("discovery"), name),
+        setup_steps=_parse_setup_steps(data.get("setup_steps"), name),
         source_dir=source_dir,
     )

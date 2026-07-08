@@ -21,7 +21,10 @@ skills:
   bundled: none
 
 # Bucket 3 (referenced post-install, auto-installed by the apply flow). Verified real via
-# `hermes skills search hebrew` → the skills-il tap. Inherits the IL doc skills from locale/il.
+# `hermes skills inspect` (2026-07-08) from agentskills.co.il (skills-il). Inherits the Hebrew/RTL,
+# Hebrew doc generator, and doc-fallback skills from locale/il. Adds the everyday gov-services
+# navigator. Payment-gateway / bank-connector (tax-and-finance) skills are excluded (free-to-run).
 post_install:
-  - id: skills-sh/skills-il/localization/hebrew-rtl-best-practices
-    note: Community RTL/Hebrew best-practices from the skills-il tap. Free to run.
+  - id: skills-sh/skills-il/government-services/israeli-bureaucracy-decoder
+    note: Decode Israeli gov letters/forms (Tax Authority, Bituach Leumi, municipalities) to plain language.
+    tier: 0

@@ -1,0 +1,31 @@
+name: il-therapist
+kind: persona
+extends: locale/il
+
+distribution:
+  description: Hebrew emotional-support companion — empathic, boundaried, crisis-aware. Not therapy.
+  version: 1.0.0
+  license: MIT
+  author: hermes-setup
+
+# Emotional-support posture enforced at the CAPABILITY level: the `safe` toolset excludes terminal
+# and other high-capability tools (verified `config check`-clean). The inherited web-search skill is
+# pruned — a support companion does not shell out or crawl the web.
+config:
+  toolsets:
+    - safe
+
+soul:
+  fragments:
+    - therapist-boundaries.md
+
+# Reference-only: no authored skills. Boundaries, crisis escalation, and wellbeing framing live in
+# the therapist-boundaries SOUL fragment. The inherited web-search reference is pruned — a support
+# companion does not crawl the web (the `safe` toolset also excludes terminal).
+# NOTE (verified 2026-07 via `hermes skills search`): NO trusted-registry skill exists for
+# therapeutic boundaries, Israeli wellbeing resources, or health services — only unvetted community
+# entries — so per the reference-only contract none are referenced here (not authored).
+skills:
+  bundled: none
+  exclude:
+    - duckduckgo-search   # prune the web-search reference inherited from base/general

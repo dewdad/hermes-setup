@@ -1,139 +1,316 @@
 # hermes-setup
 
-A reproducible, version-controlled configuration for [Hermes Agent](https://hermes-agent.nousresearch.com/docs) by Nous Research. Clone this repo and run **one command** (or hand the [agent runbook](AGENT_SETUP.md) to a coding agent) to configure a fresh Hermes install — or extend an existing one — with the same model/provider setup, personality, and custom skills on any machine.
+A **template compiler** for [Hermes Agent](https://hermes-agent.nousresearch.com/docs) by Nous Research. Author personas as layered declarative templates, compile them into native Hermes **profile distributions**, and apply them anywhere Hermes runs.
 
-**You only ever add your own API keys.** Everything else is committed here.
+This repo is *not* an installer. Hermes' own `hermes profile install/update` handles apply, updates, env-var checks, secret hygiene, and skill security scanning — we don't reinvent that.
 
 ---
 
-## How it works
+## What it is
 
-Hermes keeps *everything* — config, secrets, personality, skills, memory, auth — under a single directory pointed to by the `HERMES_HOME` environment variable:
-
-| Platform | Default `HERMES_HOME` |
-| --- | --- |
-| Windows (Desktop installer) | `%LOCALAPPDATA%\hermes` |
-| Linux / macOS / WSL2 / Termux (shell installer) | `~/.hermes` |
-| Anywhere | value of `$HERMES_HOME`, or `hermes config path` → parent dir |
-
-Because Hermes reads secrets **only** from `HERMES_HOME/.env` (config.yaml uses `${VAR}` / `api_key_env:` references, never literal keys), the config is safe to commit. This repo ships the secret-free parts and a bootstrap that drops them into `HERMES_HOME`, creating a `.env` from the template for you to fill in.
+Templates live under `templates/` and are resolved through a strict **single-inheritance chain**:
 
 ```
-hermes-setup/
-├─ hermes-home/            # mirror of the secret-free parts of HERMES_HOME
-│  ├─ config.yaml          # providers, fallback chain, agent/web/vision/auxiliary, platforms
-│  ├─ SOUL.md              # global personality / identity
-│  └─ skills/              # curated custom (non-bundled) skills
-│     ├─ autonomous-ai-agents/hermes-config-maintenance/
-│     └─ mlops/{evaluation,inference,models}/...
-├─ .env.example            # every env var the config references (no secrets)
-├─ bootstrap.ps1           # Windows one-command setup
-├─ bootstrap.sh            # Linux/macOS/WSL/Termux one-command setup
-├─ AGENT_SETUP.md          # runbook you can paste to any coding agent
-└─ .gitignore              # keeps real secrets/state out of git
+templates/base/general   ──►   templates/locale/il   ──►   templates/persona/il-legal
 ```
 
-> This config uses providers **opencode_zen** (primary, `big-pickle`), **nvidia_nim**, **nous_portal**, and **google_ai_studio** (vision), a Telegram platform binding, the `firecrawl` web backend, and **no** MCP servers. Adjust `hermes-home/config.yaml`to taste before distributing.
+The `configurator/` Python package (stdlib + PyYAML only) walks that chain, deep-merges the fragments, composes SOUL fragments, resolves the skill sources, and emits each **leaf** template as a standard Hermes profile distribution into `dist/<persona>/`. Every emitted distribution contains exactly what `hermes profile install` expects:
+
+```
+dist/<persona>/
+├─ distribution.yaml     # name, version, hermes_requires, env_requires (drives .env.EXAMPLE)
+├─ config.yaml           # _config_version: 33; secrets only as ${VAR} / key_env references
+├─ SOUL.md               # composed from ordered fragments, ≤ 20,000 chars
+├─ skills.install.json   # machine-readable referenced-skill list the apply flow auto-installs
+├─ cron/*.json           # emitted, but Hermes never auto-schedules distribution cron
+├─ .env.EXAMPLE          # auto-generated from env_requires (no real secrets)
+├─ .no-bundled-skills    # present when skills.bundled: none
+├─ .gitignore
+└─ README.md             # install steps + auto-installed referenced-skill block
+```
+
+> **Reference-only:** distributions ship **no `skills/` directory**. This repo authors no skill
+> content — personas only *reference* verified-real skill ids from trusted registries, which the
+> apply flow installs via `hermes skills install`.
+
+### Three-bucket skill source model
+
+This repo **authors no skill content**. Personas only *reference* verified-real skill ids from
+trusted registries — every id is confirmed with `hermes skills search` / `hermes skills inspect`
+before it ships (no fabricated ids). Skills are sourced three ways. This is a **binding project
+contract** (see the root `AGENTS.md`):
+
+| Bucket | Where it lives | When to use it |
+| --- | --- | --- |
+| **1. Vendored + locked (dormant capability)** | Copied into `dist/<persona>/skills/…`, pinned by content hash in `locks/<template>.lock.json`. | Retained github/url/well-known fetch for genuinely *fetched* real skills if offline reproducibility is ever needed. **No template uses this today** (so `locks/` is empty); authoring skills in-repo (`source: local`) is removed. |
+| **2. Referenced live via `skills.external_dirs`** | *Not* copied. Emitted as a path in `config.yaml` (e.g. `~/open-skills/skills`). Hermes **silently skips** the entry if the directory does not exist. | Fast-moving shared checkouts shared across every profile (e.g. `dewdad/open-skills`). One git checkout, no duplication. |
+| **3. Referenced post-install (the default path)** | Not vendored. Listed in `dist/<persona>/skills.install.json` and the README; the apply flow auto-runs `hermes skills install …` / `hermes skills tap add …`. | Default taps (`openai`, `anthropics`, `huggingface`, `NVIDIA`, `garrytan/gstack`), `obra/superpowers`, `official/…`, and source-available skills (Anthropic `docx/pdf/pptx/xlsx`). Preserves each tap's built-in trust and `NVIDIA/skills`' signatures, and sidesteps redistribution-license issues. |
+
+Where no trusted-registry skill exists for a capability, the persona references the closest real
+skill or omits it — the SOUL fragments still shape behavior. The compiler **fails the build** if a
+`redistributable: false` skill is ever vendored into `dist/` instead of referenced post-install.
+
+### Secret hygiene (hard rule)
+
+- `config.yaml` uses only `${VAR}` / `key_env` references — never literal keys.
+- The compiler scans emitted output for key-shaped literals and fails the build on any hit.
+- `.env`, `auth.json`, `models.json`, `desktop.json`, `state.db*`, `sessions/`, `memories/`, and every real secret **never** enter the repo or `dist/`.
+- Real secrets live in `HERMES_HOME/.env`, which is per-machine and not committed. `.env.EXAMPLE` (secret-free) ships inside each distribution.
 
 ---
 
 ## Quick start
 
-### 1. Install Hermes (if not already installed)
-
-```bash
-# Linux / macOS / WSL2 / Termux
-curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
-```
+### 1. Install Hermes (once per machine)
 
 ```powershell
 # Windows (native)
 iex (irm https://hermes-agent.nousresearch.com/install.ps1)
 ```
 
+```bash
+# Linux / macOS / WSL2 / Termux
+curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+```
+
 Or use the [Desktop installer](https://hermes-agent.nousresearch.com/).
 
-### 2. Bootstrap this config
+### 2. Clone this repo and list templates
 
-**Windows (PowerShell):**
+The compiler needs **Python 3.11+** and its single runtime dependency, **PyYAML** (nothing else):
+
+```bash
+python -m pip install "PyYAML>=6.0"   # or: pip install -e .
+```
 
 ```powershell
 git clone <this-repo> hermes-setup
 cd hermes-setup
-.\bootstrap.ps1 -DryRun     # preview — shows exactly what will change
-.\bootstrap.ps1             # apply
+python -m configurator list
 ```
-
-**Linux / macOS / WSL2 / Termux:**
 
 ```bash
 git clone <this-repo> hermes-setup
 cd hermes-setup
+python -m configurator list
+```
+
+### 3. Compile a distribution
+
+Compile every leaf template into `dist/`:
+
+```powershell
+python -m configurator compile --all
+```
+
+Or compile one template by name:
+
+```powershell
+python -m configurator compile general
+```
+
+Compile is deterministic — repeated runs produce identical bytes, so `dist/` diffs cleanly in git.
+
+### 4. Apply a persona to a Hermes profile
+
+You have two options.
+
+**(a) Install as a named profile (recommended — isolated).**
+
+```powershell
+hermes profile install .\dist\general --name my-general --yes
+hermes -p my-general config check
+hermes -p my-general
+```
+
+```bash
+hermes profile install ./dist/general --name my-general --yes
+hermes -p my-general config check
+hermes -p my-general
+```
+
+Then fill in the keys Hermes prompts for (all provider keys are optional — any single key yields a working agent). Hermes writes the profile's real `.env` under its own `HERMES_HOME` — the repo never sees your secrets.
+
+**(b) Apply to the default profile via bootstrap (idempotent, non-destructive).**
+
+```powershell
+.\bootstrap.ps1 -Template general -DryRun    # preview
+.\bootstrap.ps1 -Template general
+```
+
+```bash
 chmod +x bootstrap.sh
-./bootstrap.sh --dry-run    # preview
-./bootstrap.sh              # apply
+./bootstrap.sh --template general --dry-run   # preview
+./bootstrap.sh --template general
 ```
 
-### 3. Add your API keys
+Bootstrap default template is `base/general`. It backs up, swaps `config.yaml` with `.bak`, preserves SOUL unless it carries the unconfigured marker, merges skills (never deletes others), and creates `.env` from `.env.EXAMPLE` **only if it does not already exist**.
 
-The bootstrap creates `HERMES_HOME/.env` from `.env.example` (only if you don't already have one). Open it and fill in the keys you need:
+See `AGENT_SETUP.md` for the full step-by-step runbook (both flows) that a coding agent can follow.
 
-```bash
-hermes config env-path      # prints the exact .env path
-```
+### 5. Optional: the shared external-skills checkout
 
-For Nous Portal, you can instead run `hermes setup --portal` (OAuth — one login covers a model plus web search, image gen, TTS, and browser). That stores a refresh token in `HERMES_HOME/auth.json`, no key needed in `.env`.
-
-### 4. Verify & run
-
-```bash
-hermes config check         # flags missing/outdated config options
-hermes doctor               # full health check
-hermes                      # start chatting
-```
-
----
-
-## Bootstrap behavior (safe by design)
-
-Both scripts do the same thing and are **idempotent**:
-
-| Item | On a fresh install | On an existing install |
-| --- | --- | --- |
-| Safety backup | skipped (nothing to back up) | `hermes backup` (zip), or a tar/zip fallback |
-| `config.yaml` | written | existing → `config.yaml.bak.<timestamp>`, then replaced |
-| `SOUL.md` | written | preserved if you've customized it; overwrite with `--force` / `-Force` |
-| `skills/` | written | **merged** — your other skills are never deleted |
-| `.env` | created from template | **never overwritten**; missing template keys are reported |
-
-**Flags:** `--dry-run`/`-DryRun`, `--force`/`-Force`, `--skip-backup`/`-SkipBackup`, `--skip-skills`/`-SkipSkills`, `--hermes-home PATH`/`-HermesHome PATH`.
-
----
-
-## Configure it via an agent instead
-
-Hand `AGENT_SETUP.md` to any capable agent (including Hermes itself). It performs the identical steps on any platform and reports what changed.
-
----
-
-## Updating the repo from your live install
-
-When you change your live Hermes config and want to propagate it, re-mirror the secret-free parts back into the repo (from `HERMES_HOME`):
+`base/general` emits `skills.external_dirs: [~/open-skills/skills]`. Cloning that repo is **optional** — Hermes silently skips missing external dirs, so nothing breaks if it isn't there:
 
 ```powershell
-# Windows example — adjust $src if your HERMES_HOME differs
-$src = $env:HERMES_HOME; if (-not $src) { $src = Split-Path (hermes config path) }
-Copy-Item "$src\config.yaml" .\hermes-home\config.yaml -Force
-Copy-Item "$src\SOUL.md"     .\hermes-home\SOUL.md -Force
-# copy only your custom (non-bundled) skills into .\hermes-home\skills\
+git clone https://github.com/dewdad/open-skills $HOME\open-skills
+# or refresh an existing checkout:
+git -C $HOME\open-skills pull --ff-only
 ```
 
-Then commit. `.gitignore` keeps `.env`, `auth.json`, databases, sessions, memories, and backups out of git.
+```bash
+git clone https://github.com/dewdad/open-skills ~/open-skills
+git -C ~/open-skills pull --ff-only
+```
+
+Every distribution also emits `cron/open-skills-sync.json` for a daily fast-forward pull. Hermes **never auto-schedules** distribution cron; enable it explicitly per profile if you want it.
 
 ---
 
-## Notes & caveats
+## Template authoring guide
 
-- **Config schema version:** this config targets `_config_version: 33`(Hermes v0.18.x / 2026.7.x). After a Hermes upgrade, run `hermes config check` / `hermes config migrate` to reconcile new options.
-- **Secrets hygiene:** never commit a real `.env`. Only `.env.example` is tracked.
-- **MCP:** none configured here. Add with `hermes mcp add ...` and document the required env var in `.env.example`.
+Templates are the source of truth. See `templates/AGENTS.md` for the full authoring contract — `template.yaml` schema, merge semantics (`include` / `exclude` / `!remove`, base → locale → persona ordering), SOUL fragment composition + 20k cap, skill-bucket rules, and the requirement that every `env:` entry be `required: false` so a single provider key yields a working agent.
+
+Skeleton:
+
+```yaml
+name: my-persona
+kind: persona                 # base | locale | persona
+extends: locale/il            # single inheritance; chain resolved root-first
+distribution:
+  description: "…"
+  version: 1.0.0
+  license: MIT
+config:                       # deep-merged config.yaml fragment (_config_version: 33)
+  model: { provider: zenmux, default: anthropic/claude-sonnet-5-free }
+env:
+  - { name: ZENMUX_API_KEY, description: "primary provider", required: false }
+soul:
+  fragments: [identity.md, style.md, scope.md]
+skills:
+  bundled: none
+  external_dirs: [~/open-skills/skills]     # bucket 2 — live shared checkout
+  exclude: [name-from-parent]               # prunes inherited include[] AND post_install[] by name
+post_install:                               # bucket 3 (default path) — verified-real ids only
+  - { id: skills-sh/anthropics/skills/docx, note: "Word docs. Source-available; free to run." }
+  - { id: obra/superpowers, tap: true, note: "Dev workflow skills (adds the tap)." }
+```
+
+Every `post_install` id must be confirmed real with `hermes skills search` / `hermes skills inspect`
+before it ships. The apply flow auto-installs them from the emitted `skills.install.json`.
+
+### Extending and locking
+
+- Add a new persona by creating `templates/persona/<name>/template.yaml` with `extends:` pointing at any existing base or locale.
+- Reference skills via `post_install[]` (verified-real ids only). `locks/` is **empty** under the reference-only model — it only fills if a template ever uses the dormant github/url/well-known vendoring capability. In that case, refresh with:
+
+  ```powershell
+  python -m configurator update-locks
+  ```
+
+  This is the **only** writer of `locks/` (it also prunes orphan lockfiles when a template vendors nothing).
+- After any template or lockfile edit, run:
+
+  ```powershell
+  python -m configurator verify
+  ```
+
+  which validates schemas, checks the DOX chain, and re-scans `dist/` for secret literals.
+
+### Publishing a persona
+
+Every leaf under `dist/<persona>/` is already a valid Hermes profile distribution. To publish one standalone so others can install it directly from git:
+
+1. Copy `dist/<persona>/` out to its own git repo (or use `git subtree split`).
+2. Push it to GitHub / any git host.
+3. Anyone can then install it with:
+
+   ```powershell
+   hermes profile install github.com/you/<persona> --name <profile>
+   ```
+
+The distribution stays small, its referenced-skill list ships in its own `skills.install.json` + README, and Hermes handles updates via `hermes profile update`.
+
+---
+
+## Updating templates from a live install (`ingest`)
+
+The old "re-mirror `hermes-home/` from your live install" flow is **gone**. To propagate changes from a live Hermes profile back into this repo:
+
+```powershell
+python -m configurator ingest
+# or for a specific profile:
+python -m configurator ingest --profile my-general
+```
+
+`ingest` reads the **live `config.yaml` only** — never `.env`, `auth.json`, `models.json`, `desktop.json`, or any desktop/session state. It diffs the live config against the resolved `base/general` config and prints a reviewable drift diff. Nothing is written automatically; fold the meaningful drift back into the appropriate template by hand, then recompile.
+
+---
+
+## Config schema & upgrades
+
+- Target: `_config_version: 33` (Hermes v0.18.x / 2026.7.x).
+- Custom providers use `key_env` (not `api_key_env`).
+- Unknown config keys are **warned, not failed** — live Hermes `config check` is lenient.
+- After a Hermes upgrade, on each profile you use:
+
+  ```powershell
+  hermes -p <profile> config check
+  hermes -p <profile> config migrate
+  ```
+
+---
+
+## `base/general` — the 0-cost default chain
+
+`base/general` reproduces a free, no-lock-in model chain that every persona inherits by default:
+
+- **Primary:** `zenmux / anthropic/claude-sonnet-5-free`
+- **Fallbacks (quality-first, throughput-last):** `opencode-zen/big-pickle` → `nvidia/glm-5.2` → `nous / stepfun/step-3.7-flash:free`
+- **Vision aux:** `gemini/gemini-3.1-flash` with a nous free fallback
+
+Four independent providers, every provider key `required: false` — **any one key yields a working agent** with no per-call paid services on the default path.
+
+---
+
+## Repository layout
+
+```
+hermes-setup/
+├─ AGENTS.md              # DOX root rail — project-wide binding contracts (contributor/agent facing)
+├─ AGENT_SETUP.md         # end-user install runbook (see below)
+├─ README.md              # this file
+├─ templates/             # authoring surface — base / locale / persona
+│  └─ AGENTS.md           # template authoring contract
+├─ configurator/          # Python compiler package (stdlib + PyYAML only)
+│  └─ AGENTS.md           # compiler code contract
+├─ dist/                  # generated distributions — never hand-edit
+│  └─ AGENTS.md           # generated-output contract
+├─ locks/                 # pinned skill sources — only --update-locks may write here
+│  └─ AGENTS.md           # lockfile provenance contract
+├─ tests/                 # compiler + live-harness tests
+│  └─ AGENTS.md           # harness safety contract
+├─ bootstrap.ps1          # apply a dist to the default profile (Windows)
+├─ bootstrap.sh           # apply a dist to the default profile (POSIX)
+└─ .gitignore
+```
+
+---
+
+## The three docs — who reads what
+
+| Document | Audience | Purpose |
+| --- | --- | --- |
+| Root `AGENTS.md` | **Contributors and coding agents editing this repo** | The DOX rail — binding work contracts for the source tree (secret hygiene, three-bucket model, determinism, config schema, per-directory child rails). |
+| `AGENT_SETUP.md` | **End users and agents installing a persona** | Two step-by-step runbooks (named profile via `hermes profile install`; default profile via `bootstrap`). Does not describe how to change the source tree. |
+| `dist/<persona>/README.md` | **Someone installing this specific persona** | Install command, `.env.EXAMPLE` pointer, and the referenced-skill `hermes skills install …` block (auto-installed by the apply flow) for that persona. |
+
+If you are extending this repo, start at root `AGENTS.md`. If you are installing a persona, start at `AGENT_SETUP.md` or the per-distribution README.
+
+---
+
+## Notes
+
+- Every emitted distribution ships `cron/*.json` when the template declares cron. **Hermes never auto-schedules distribution cron** — you must enable it explicitly per profile.
+- The compiler is stdlib + PyYAML only. No runtime dependency beyond PyYAML, so it runs anywhere Hermes runs.
+- Windows-first correctness (paths, UTF-8 with Hebrew content) is a project contract; POSIX equivalents are always documented alongside.

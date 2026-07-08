@@ -1,50 +1,58 @@
 #!/usr/bin/env bash
-# =============================================================================
-# Reproducible Hermes Agent setup (Linux / macOS / WSL2 / Termux)
-#
-# Copies managed config.yaml, SOUL.md and custom skills from this repo into your
-# Hermes home. Safe on a fresh install or to extend an existing one.
+# Apply a compiled Hermes persona distribution (dist/<template>) to your DEFAULT Hermes profile.
+# Safe on a fresh install or to extend an existing one. For a *named* profile instead, use
+#   hermes profile install ./dist/<name> --name <profile>
 #
 # Merge semantics (never destructive to your data):
-#   * config.yaml -> existing backed up to config.yaml.bak.<timestamp>, then replaced
-#   * SOUL.md     -> only written if missing, still default (<!-- UNCONFIGURED -->),
-#                    or --force is given; a customized SOUL.md is preserved
-#   * skills/     -> managed skills merged in; your other skills are untouched
-#   * .env        -> created from .env.example ONLY if missing; an existing .env
-#                    is never overwritten (missing keys are reported instead)
-# A full backup (hermes backup, or a tar fallback) runs first unless --skip-backup.
-#
-# Usage:
-#   ./bootstrap.sh [--dry-run] [--force] [--skip-backup] [--skip-skills]
-#                  [--hermes-home PATH]
-# =============================================================================
+#   config.yaml   -> existing backed up to config.yaml.bak.<ts>, then replaced
+#   SOUL.md       -> only written if missing / still the default marker / --force
+#   skills/, skill-bundles/, cron/, mcp.json -> merged/copied if the distribution ships them
+#   .env          -> created from the distribution's .env.EXAMPLE ONLY if missing
+# A backup (hermes backup, or a tar fallback) runs first unless --skip-backup.
+# Best-effort: clones/pulls the optional shared skills checkout at ~/open-skills.
 set -euo pipefail
 
-DRY_RUN=0; FORCE=0; SKIP_BACKUP=0; SKIP_SKILLS=0; HERMES_HOME_ARG=""
+TEMPLATE="base/general"
+HERMES_HOME_ARG=""
+DRY_RUN=0; FORCE=0; SKIP_BACKUP=0; SKIP_SKILLS=0; SKIP_OPEN_SKILLS=0; SKIP_SKILLS_INSTALL=0; ASSUME_YES=0
+
+usage() {
+  cat <<'EOF'
+Usage: ./bootstrap.sh [--template REF|NAME] [--hermes-home PATH]
+                      [--dry-run] [--force] [--skip-backup] [--skip-skills] [--skip-open-skills]
+                      [--skip-skills-install] [--yes]
+  --template            Distribution to apply (ref "persona/developer" or name "developer"). Default base/general.
+  --skip-skills-install Do not auto-install the distribution's referenced skills.
+  --yes                 Auto-confirm the referenced-skill install prompt (non-interactive).
+EOF
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --dry-run)      DRY_RUN=1 ;;
-    --force)        FORCE=1 ;;
-    --skip-backup)  SKIP_BACKUP=1 ;;
-    --skip-skills)  SKIP_SKILLS=1 ;;
-    --hermes-home)  HERMES_HOME_ARG="${2:-}"; shift ;;
-    -h|--help)      grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "Unknown argument: $1" >&2; exit 2 ;;
+    --template) TEMPLATE="$2"; shift 2;;
+    --hermes-home) HERMES_HOME_ARG="$2"; shift 2;;
+    --dry-run) DRY_RUN=1; shift;;
+    --force) FORCE=1; shift;;
+    --skip-backup) SKIP_BACKUP=1; shift;;
+    --skip-skills) SKIP_SKILLS=1; shift;;
+    --skip-open-skills) SKIP_OPEN_SKILLS=1; shift;;
+    --skip-skills-install) SKIP_SKILLS_INSTALL=1; shift;;
+    --yes) ASSUME_YES=1; shift;;
+    -h|--help) usage; exit 0;;
+    *) echo "unknown option: $1" >&2; usage; exit 2;;
   esac
-  shift
 done
 
-REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
-SOURCE_HOME="$REPO_ROOT/hermes-home"
-ENV_EXAMPLE="$REPO_ROOT/.env.example"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TEMPLATE_NAME="${TEMPLATE##*/}"
+SOURCE_HOME="$REPO_ROOT/dist/$TEMPLATE_NAME"
+ENV_EXAMPLE="$SOURCE_HOME/.env.EXAMPLE"
 
-# ----- colors / logging ------------------------------------------------------
-if [ -t 1 ]; then C='\033[36m'; G='\033[32m'; Y='\033[33m'; D='\033[90m'; N='\033[0m'; else C=''; G=''; Y=''; D=''; N=''; fi
-step() { printf "\n${C}==> %s${N}\n" "$1"; }
-info() { printf "    %s\n" "$1"; }
-ok()   { printf "${G}  + %s${N}\n" "$1"; }
-warn() { printf "${Y}  ! %s${N}\n" "$1"; }
-skip() { printf "${D}  - %s${N}\n" "$1"; }
+step() { printf '\n==> %s\n' "$1"; }
+info() { printf '    %s\n' "$1"; }
+ok()   { printf '  + %s\n' "$1"; }
+warn() { printf '  ! %s\n' "$1"; }
+skip() { printf '  - %s\n' "$1"; }
 
 HERMES_CLI="$(command -v hermes || true)"
 
@@ -52,114 +60,134 @@ resolve_home() {
   if [ -n "$HERMES_HOME_ARG" ]; then echo "$HERMES_HOME_ARG"; return; fi
   if [ -n "${HERMES_HOME:-}" ]; then echo "$HERMES_HOME"; return; fi
   if [ -n "$HERMES_CLI" ]; then
-    local cfg; cfg="$("$HERMES_CLI" config path 2>/dev/null | head -n1 || true)"
-    if [ -n "$cfg" ]; then dirname "$cfg"; return; fi
+    local p; p="$("$HERMES_CLI" config path 2>/dev/null | head -n1 || true)"
+    if [ -n "$p" ]; then dirname "$p"; return; fi
   fi
-  if [ -d "$HOME/.hermes" ]; then echo "$HOME/.hermes"; return; fi
-  if [ -n "${LOCALAPPDATA:-}" ] && [ -d "$LOCALAPPDATA/hermes" ]; then echo "$LOCALAPPDATA/hermes"; return; fi
-  echo "$HOME/.hermes"   # sensible default for the shell installer
+  echo "$HOME/.hermes"
 }
 
-run() { if [ "$DRY_RUN" -eq 1 ]; then info "[dry-run] $*"; else eval "$@"; fi; }
+env_keys() { [ -f "$1" ] && grep -E '^[[:space:]]*[^#[:space:]][^=]*=' "$1" | sed -E 's/[[:space:]]*=.*//' || true; }
 
-env_keys() { # $1=file -> prints KEY names
-  [ -f "$1" ] || return 0
-  grep -E '^[[:space:]]*[^#[:space:]][^=]*=' "$1" | sed -E 's/^[[:space:]]*([^=]+)=.*/\1/' | sed -E 's/[[:space:]]+$//'
+copy_tree() { # src dst label
+  local src="$1" dst="$2" label="$3"
+  [ -d "$src" ] || return 0
+  while IFS= read -r -d '' f; do
+    local rel="${f#"$src"/}" dest="$dst/${f#"$src"/}"
+    if [ "$DRY_RUN" = 1 ]; then info "[dry-run] $label -> $rel"; continue; fi
+    mkdir -p "$(dirname "$dest")"; cp -f "$f" "$dest"; ok "$label: $rel"
+  done < <(find "$src" -type f -print0)
 }
 
-printf "${N}Hermes Agent — reproducible bootstrap\n"
-[ "$DRY_RUN" -eq 1 ] && warn "DRY RUN — no changes will be written."
-[ -d "$SOURCE_HOME" ] || { echo "Source '$SOURCE_HOME' not found. Run from inside the repo." >&2; exit 1; }
+echo "Hermes Agent — apply distribution '$TEMPLATE_NAME'"
+[ "$DRY_RUN" = 1 ] && warn "DRY RUN — no changes will be written."
+[ -d "$SOURCE_HOME" ] || { echo "Distribution '$SOURCE_HOME' not found. Compile it: python -m configurator compile $TEMPLATE" >&2; exit 1; }
 
 TARGET="$(resolve_home)"
 step "Target Hermes home"; info "$TARGET"
-if [ -n "$HERMES_CLI" ]; then info "hermes CLI: $HERMES_CLI"; else warn "hermes CLI not found on PATH (files will be staged for when it is)."; fi
-run "mkdir -p \"$TARGET\""
-# Pin every subsequent CLI call (backup, verify) to the home we're configuring,
-# so a custom --hermes-home doesn't back up / check the default home by mistake.
+[ -n "$HERMES_CLI" ] && info "hermes CLI: $HERMES_CLI" || warn "hermes CLI not found on PATH."
+[ "$DRY_RUN" = 1 ] || mkdir -p "$TARGET"
 export HERMES_HOME="$TARGET"
 
-# ----- 1. backup -------------------------------------------------------------
 step "Safety backup"
-if [ "$SKIP_BACKUP" -eq 1 ]; then
-  skip "skipped (--skip-backup)"
-elif [ ! -f "$TARGET/config.yaml" ]; then
-  skip "nothing to back up (fresh install)"
-elif [ "$DRY_RUN" -eq 1 ]; then
-  info "[dry-run] would run 'hermes backup' (or tar $TARGET)"
+if [ "$SKIP_BACKUP" = 1 ]; then skip "skipped (--skip-backup)"
+elif [ ! -f "$TARGET/config.yaml" ]; then skip "nothing to back up (fresh install)"
+elif [ "$DRY_RUN" = 1 ]; then info "[dry-run] would run 'hermes backup' (or tar $TARGET)"
 else
-  if [ -n "$HERMES_CLI" ] && "$HERMES_CLI" backup >/dev/null 2>&1; then
-    ok "hermes backup created"
-  else
-    STAMP="$(date +%Y%m%d_%H%M%S)"; TARBALL="${TMPDIR:-/tmp}/hermes-home-backup-$STAMP.tar.gz"
-    tar -czf "$TARBALL" -C "$TARGET" . && ok "tar backup: $TARBALL"
-  fi
+  done_bk=0
+  if [ -n "$HERMES_CLI" ]; then "$HERMES_CLI" backup >/dev/null 2>&1 && { ok "hermes backup created"; done_bk=1; } || warn "hermes backup failed"; fi
+  if [ "$done_bk" = 0 ]; then tarf="$(mktemp -t hermes-home-backup.XXXXXX).tar.gz"; tar -czf "$tarf" -C "$TARGET" . && ok "tar backup: $tarf"; fi
 fi
 
-# ----- 2. config.yaml --------------------------------------------------------
 step "config.yaml"
 if [ -f "$TARGET/config.yaml" ]; then
-  BAK="$TARGET/config.yaml.bak.$(date +%Y%m%d_%H%M%S)"
-  run "cp -p \"$TARGET/config.yaml\" \"$BAK\"" && [ "$DRY_RUN" -eq 0 ] && ok "backed up existing -> $(basename "$BAK")" || true
+  bak="$TARGET/config.yaml.bak.$(date +%Y%m%d_%H%M%S)"
+  if [ "$DRY_RUN" = 1 ]; then info "[dry-run] backup existing -> $bak; then replace"; else cp -f "$TARGET/config.yaml" "$bak"; ok "backed up existing -> $(basename "$bak")"; fi
 fi
-run "cp -f \"$SOURCE_HOME/config.yaml\" \"$TARGET/config.yaml\"" && [ "$DRY_RUN" -eq 0 ] && ok "wrote config.yaml" || true
+if [ "$DRY_RUN" = 1 ]; then info "[dry-run] copy config.yaml"; else cp -f "$SOURCE_HOME/config.yaml" "$TARGET/config.yaml"; ok "wrote config.yaml"; fi
 
-# ----- 3. SOUL.md ------------------------------------------------------------
 step "SOUL.md"
-WRITE_SOUL=1
-if [ -f "$TARGET/SOUL.md" ] && [ "$FORCE" -eq 0 ]; then
-  if ! grep -qiE '<!--[[:space:]]*UNCONFIGURED[[:space:]]*-->' "$TARGET/SOUL.md"; then WRITE_SOUL=0; fi
-fi
-if [ "$WRITE_SOUL" -eq 1 ]; then
-  run "cp -f \"$SOURCE_HOME/SOUL.md\" \"$TARGET/SOUL.md\"" && [ "$DRY_RUN" -eq 0 ] && ok "wrote SOUL.md" || true
-else
-  skip "existing SOUL.md is customized — preserved (use --force to overwrite)"
+if [ -f "$SOURCE_HOME/SOUL.md" ]; then
+  write_soul=1
+  if [ -f "$TARGET/SOUL.md" ] && [ "$FORCE" = 0 ]; then grep -q '<!--\s*UNCONFIGURED\s*-->' "$TARGET/SOUL.md" || write_soul=0; fi
+  if [ "$write_soul" = 1 ]; then
+    if [ "$DRY_RUN" = 1 ]; then info "[dry-run] write SOUL.md"; else cp -f "$SOURCE_HOME/SOUL.md" "$TARGET/SOUL.md"; ok "wrote SOUL.md"; fi
+  else skip "existing SOUL.md is customized — preserved (use --force to overwrite)"; fi
+else skip "distribution ships no SOUL.md"; fi
+
+step "Distribution assets (skills / skill-bundles / cron / mcp.json)"
+if [ "$SKIP_SKILLS" = 1 ]; then skip "skills skipped (--skip-skills)"; else copy_tree "$SOURCE_HOME/skills" "$TARGET/skills" "skill"; fi
+copy_tree "$SOURCE_HOME/skill-bundles" "$TARGET/skill-bundles" "bundle"
+copy_tree "$SOURCE_HOME/cron" "$TARGET/cron" "cron"
+if [ -f "$SOURCE_HOME/mcp.json" ]; then
+  if [ "$DRY_RUN" = 1 ]; then info "[dry-run] copy mcp.json"; else cp -f "$SOURCE_HOME/mcp.json" "$TARGET/mcp.json"; ok "wrote mcp.json"; fi
 fi
 
-# ----- 4. skills -------------------------------------------------------------
-step "Custom skills"
-if [ "$SKIP_SKILLS" -eq 1 ]; then
-  skip "skipped (--skip-skills)"
+step "Optional shared skills (~/open-skills)"
+if [ "$SKIP_OPEN_SKILLS" = 1 ]; then skip "skipped (--skip-open-skills)"
+elif [ "$DRY_RUN" = 1 ]; then info "[dry-run] clone/pull https://github.com/dewdad/open-skills -> ~/open-skills"
+elif ! command -v git >/dev/null 2>&1; then warn "git not found — skipping (a missing ~/open-skills is tolerated)"
 else
-  run "mkdir -p \"$TARGET/skills\""
-  while IFS= read -r skillmd; do
-    sd="$(dirname "$skillmd")"
-    rel="${sd#"$SOURCE_HOME/skills/"}"
-    dest="$TARGET/skills/$rel"
-    if [ "$DRY_RUN" -eq 1 ]; then info "[dry-run] merge skill -> $rel"; continue; fi
-    mkdir -p "$(dirname "$dest")"
-    cp -Rf "$sd" "$(dirname "$dest")/"
-    ok "skill: $rel"
-  done < <(find "$SOURCE_HOME/skills" -name SKILL.md -type f)
+  os_dir="$HOME/open-skills"
+  if [ -d "$os_dir/.git" ]; then git -C "$os_dir" pull --ff-only >/dev/null 2>&1 && ok "pulled ~/open-skills" || warn "open-skills pull failed (tolerated)"
+  else git clone --depth 1 https://github.com/dewdad/open-skills "$os_dir" >/dev/null 2>&1 && ok "cloned ~/open-skills" || warn "open-skills clone failed (tolerated)"; fi
 fi
 
-# ----- 5. .env ---------------------------------------------------------------
 step ".env"
-if [ ! -f "$TARGET/.env" ]; then
-  run "cp -f \"$ENV_EXAMPLE\" \"$TARGET/.env\"" && [ "$DRY_RUN" -eq 0 ] && ok "created .env from template — EDIT IT to add your keys" || true
+DST_ENV="$TARGET/.env"
+if [ ! -f "$ENV_EXAMPLE" ]; then skip "distribution ships no .env.EXAMPLE (no keys required)"
+elif [ ! -f "$DST_ENV" ]; then
+  if [ "$DRY_RUN" = 1 ]; then info "[dry-run] create .env from .env.EXAMPLE"; else cp -f "$ENV_EXAMPLE" "$DST_ENV"; ok "created .env from template — EDIT IT to add your keys"; fi
 else
-  missing=""
-  for k in $(env_keys "$ENV_EXAMPLE"); do
-    if ! env_keys "$TARGET/.env" | grep -qx "$k"; then missing="$missing $k"; fi
-  done
-  if [ -n "$missing" ]; then
-    warn "existing .env preserved. Keys in template not present in your .env:"
-    for k in $missing; do info "$k"; done
+  missing="$(comm -23 <(env_keys "$ENV_EXAMPLE" | sort -u) <(env_keys "$DST_ENV" | sort -u) || true)"
+  if [ -n "$missing" ]; then warn "existing .env preserved. Template keys not present:"; echo "$missing" | sed 's/^/    /'; else ok "existing .env preserved; all template keys present"; fi
+fi
+
+# Parse skills.install.json (deterministic sorted keys: id, note, tap) without a jq dependency.
+# Emits one "install <id>" or "tap <id>" line per referenced skill.
+parse_installs() {
+  local id=""
+  while IFS= read -r line; do
+    case "$line" in
+      *'"id":'*) id="${line#*: \"}"; id="${id%\"*}";;
+      *'"tap": true'*)  [ -n "$id" ] && echo "tap $id";;
+      *'"tap": false'*) [ -n "$id" ] && echo "install $id";;
+    esac
+  done < "$1"
+}
+
+step "Referenced skills (auto-install)"
+INSTALL_MANIFEST="$SOURCE_HOME/skills.install.json"
+if [ "$SKIP_SKILLS_INSTALL" = 1 ]; then skip "skipped (--skip-skills-install)"
+elif [ ! -f "$INSTALL_MANIFEST" ]; then skip "distribution references no skills"
+elif [ -z "$HERMES_CLI" ]; then warn "hermes CLI not found — skipping skill install (run the README block later)"
+else
+  mapfile -t INSTALLS < <(parse_installs "$INSTALL_MANIFEST") || INSTALLS=()
+  if [ "${#INSTALLS[@]}" = 0 ]; then skip "no referenced skills listed"
   else
-    ok "existing .env preserved; all template keys present"
+    info "references ${#INSTALLS[@]} skill(s):"; printf '      %s\n' "${INSTALLS[@]}"
+    proceed=1
+    if [ "$DRY_RUN" = 1 ]; then info "[dry-run] would run 'hermes skills install/tap add' for each (Hermes security-scans each)"; proceed=0
+    elif [ "$ASSUME_YES" = 0 ]; then
+      printf '    Install these referenced skills now (Hermes will security-scan each)? [y/N] '
+      read -r ans; case "$ans" in y|Y|yes|YES) ;; *) proceed=0; skip "declined — install later via the README block";; esac
+    fi
+    if [ "$proceed" = 1 ]; then
+      for entry in "${INSTALLS[@]}"; do
+        kind="${entry%% *}"; sid="${entry#* }"
+        if [ "$kind" = tap ]; then
+          "$HERMES_CLI" skills tap add "$sid" >/dev/null 2>&1 && ok "tap add $sid" || warn "tap add $sid failed (tolerated)"
+        else
+          "$HERMES_CLI" skills install "$sid" --yes >/dev/null 2>&1 && ok "installed $sid" || warn "install $sid failed (tolerated)"
+        fi
+      done
+    fi
   fi
 fi
 
-# ----- 6. verify -------------------------------------------------------------
 step "Verify"
-if [ "$DRY_RUN" -eq 1 ]; then
-  info "[dry-run] would run: hermes config check ; hermes doctor"
-elif [ -n "$HERMES_CLI" ]; then
-  "$HERMES_CLI" config check || warn "config check reported issues (see above)."
-  info "Run 'hermes doctor' for a full health check."
-else
-  warn "hermes CLI not found — install Hermes, then run 'hermes config check' && 'hermes doctor'."
-fi
+if [ "$DRY_RUN" = 1 ]; then info "[dry-run] would run: hermes config check"
+elif [ -n "$HERMES_CLI" ]; then "$HERMES_CLI" config check || warn "config check reported issues (see above)."; info "Run 'hermes doctor' for a full health check."
+else warn "hermes CLI not found — run 'hermes config check' after installing Hermes."; fi
 
-printf "\n${G}Done.${N}\n"
-info "Next: edit '$TARGET/.env' with your API keys, then run 'hermes'."
+printf '\nDone.\n'
+info "Applied '$TEMPLATE_NAME'. Next: edit '$TARGET/.env' with your API keys, then run 'hermes'."

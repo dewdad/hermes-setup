@@ -1,77 +1,271 @@
-# Agent Runbook — Configure Hermes Agent from this repo
+# Agent Runbook — Install a Hermes persona from this repo
 
-This file is a **prompt you can hand to any capable coding agent** (Hermes itself,
-Claude, Codex, etc.) to configure a Hermes Agent installation from this repo
-without running the bootstrap script by hand. Paste the "Prompt" section to the
-agent, or point the agent at this file.
+This file is a **prompt any capable coding agent** (Hermes itself, Claude, Codex, etc.) can follow to install one of the compiled personas in `dist/<persona>/` onto the current machine.
 
-The script (`bootstrap.ps1` / `bootstrap.sh`) is the source of truth; this runbook
-performs the same steps manually so an agent can do it on any platform.
+It contains two independent runbooks. Pick one:
 
----
+- **Runbook A — Named profile** (recommended, isolated): install a distribution as its own Hermes profile via `hermes profile install`. Cleanest, fully sandboxed, easy to delete.
+- **Runbook B — Default profile via bootstrap**: apply a distribution *into the default profile* by running `bootstrap.ps1` / `bootstrap.sh`. Idempotent and non-destructive: backs up, preserves customisation, never overwrites `.env`.
 
-## Prompt (paste this to the agent)
-
-> You are configuring a Hermes Agent installation from the repo in the current
-> directory. Do it **idempotently and non-destructively** following the steps
-> below. Never overwrite an existing `.env`. Back up before replacing anything.
-> After finishing, verify with `hermes config check` and `hermes doctor` and
-> report what changed.
+Both runbooks assume `dist/<persona>/` already exists. If it does not, run `python -m configurator compile <persona>` first (or `python -m configurator compile --all`).
 
 ---
 
-## Facts the agent must know
+## Ground truth every agent must respect
 
-- **Everything lives under one directory: `HERMES_HOME`.** Resolve it in this order:
+Before doing anything, read these facts. They apply to **both** runbooks.
+
+- **`HERMES_HOME` is resolved dynamically — never hardcode a path.** In order:
   1. `$HERMES_HOME` environment variable, if set.
-  2. `hermes config path` → the parent directory of the printed path.
-  3. Platform default: Windows Desktop installer → `%LOCALAPPDATA%\hermes`;
-     shell installer → `~/.hermes`.
-  Confirm with `hermes config path` and `hermes config env-path`.
-- **Secrets never live in `config.yaml`.** They are `${VAR}` / `api_key_env`
-  references resolved from `HERMES_HOME/.env`. That is what makes `config.yaml`
-  safe to version-control.
-- The repo mirrors the secret-free parts of `HERMES_HOME` under `hermes-home/`:
-  - `hermes-home/config.yaml` — model providers, fallback chain, agent/web/vision/auxiliary, platforms.
-  - `hermes-home/SOUL.md` — global personality/identity.
-  - `hermes-home/skills/<category>/<skill>/SKILL.md` — curated custom skills.
-- `.env.example` lists every environment variable the config references.
+  2. `hermes config path` → the *parent directory* of the printed path.
+  3. Platform default: Windows Desktop installer → `%LOCALAPPDATA%\hermes`; shell installer → `~/.hermes`.
 
-## Steps
+  Confirm with `hermes config path` and `hermes config env-path` before touching files. Named profiles live under `HERMES_HOME/profiles/<name>/`; the default profile is `HERMES_HOME/` itself.
 
-1. **Resolve `HERMES_HOME`** (see above) and ensure the directory exists.
-2. **Back up** the current home: run `hermes backup` (writes a zip). If the CLI is
-   unavailable, zip/tar `HERMES_HOME` to a temp location. Skip if it's a fresh install.
-3. **config.yaml**: if `HERMES_HOME/config.yaml` exists, copy it to
-   `config.yaml.bak.<timestamp>` first, then copy `hermes-home/config.yaml` over it.
-4. **SOUL.md**: copy `hermes-home/SOUL.md` to `HERMES_HOME/SOUL.md` **only if** the
-   target is missing or still contains the literal marker `<!-- UNCONFIGURED -->`.
-   If the target is customized, leave it and say so.
-5. **skills**: for each `SKILL.md` under `hermes-home/skills/`, copy its whole
-   folder (with `references/`, `scripts/`, etc.) to the matching path under
-   `HERMES_HOME/skills/`, preserving the `<category>/<skill>` layout. Merge — do not
-   delete other skills already present.
-6. **.env**: if `HERMES_HOME/.env` does **not** exist, copy `.env.example` there and
-   tell the user to fill in their keys. If it **does** exist, do not touch it —
-   instead diff the keys and report any key present in `.env.example` but missing
-   from the user's `.env`.
-7. **Verify**: run `hermes config check`; if it reports missing/outdated options,
-   run `hermes config migrate`. Then run `hermes doctor`. Report results.
-8. **Report**: list exactly which files were written/backed up/skipped, the
-   resolved `HERMES_HOME`, and any `.env` keys the user still needs to provide.
+- **Secrets are never in `config.yaml`.** The distribution's `config.yaml` uses only `${VAR}` / `key_env` references, resolved from `HERMES_HOME/.env` (or `HERMES_HOME/profiles/<name>/.env`). That is why `config.yaml` is safe to version-control and safe to ship in `dist/`.
 
-## Must NOT do
+- **`.env.EXAMPLE` is a template, never a secret store.** Copy it to `.env` and fill in real keys **only inside `HERMES_HOME`**. Never write a real key into anything under this repo, and never overwrite an existing `.env`.
 
-- Do **not** write real secret values anywhere in the repo.
+- **`base/general` provider keys are all optional.** Any single key (`ZENMUX_API_KEY`, `OPENCODE_ZEN_API_KEY`, `NVIDIA_API_KEY`, or `GOOGLE_API_KEY`) yields a working agent. Missing keys log warnings, not errors.
+
+- **Distributions ship `cron/*.json` but Hermes never auto-schedules them.** Enabling cron is an explicit user action per profile.
+
+---
+
+## Optional prep step (both runbooks)
+
+`base/general` and its descendants emit `skills.external_dirs: [~/open-skills/skills]`. Cloning that repo is **optional** — Hermes silently skips missing external dirs, so runbook success does not depend on it. If you want the shared skills available, do this once:
+
+```powershell
+if (Test-Path "$HOME\open-skills") {
+  git -C "$HOME\open-skills" pull --ff-only
+} else {
+  git clone https://github.com/dewdad/open-skills "$HOME\open-skills"
+}
+```
+
+```bash
+if [ -d "$HOME/open-skills" ]; then
+  git -C "$HOME/open-skills" pull --ff-only
+else
+  git clone https://github.com/dewdad/open-skills "$HOME/open-skills"
+fi
+```
+
+A git or network failure here must not block either runbook.
+
+---
+
+## Runbook A — Install as a named profile
+
+Use this when you want the persona isolated from the default profile. Every named profile has its own `config.yaml`, `SOUL.md`, `skills/`, and `.env` under `HERMES_HOME/profiles/<name>/`.
+
+### Prompt (paste to the agent)
+
+> You are installing a Hermes profile distribution from `dist/<persona>/` in the current repo as a **named profile**. Do it non-destructively: never overwrite an existing `.env`, never write real secrets into this repo, and resolve `HERMES_HOME` dynamically. After finishing, verify with `hermes -p <profile> config check` and report exactly what changed.
+
+### Steps
+
+1. **Pick the persona** and the profile name. Example: persona `general`, profile name `my-general`. Confirm the persona directory exists:
+
+   ```powershell
+   Test-Path .\dist\general\distribution.yaml
+   ```
+
+   ```bash
+   test -f ./dist/general/distribution.yaml && echo ok
+   ```
+
+2. **Run the optional external-skills prep step above** (best-effort, ignore failure).
+
+3. **Install the profile.** `hermes profile install` copies the distribution into `HERMES_HOME/profiles/<name>/`, runs Hermes' own env-var check, skill security scan, and generates `.env.EXAMPLE` inside the new profile:
+
+   ```powershell
+   hermes profile install .\dist\general --name my-general --yes
+   ```
+
+   ```bash
+   hermes profile install ./dist/general --name my-general --yes
+   ```
+
+4. **Locate the profile's `.env`.**
+
+   ```powershell
+   hermes -p my-general config env-path
+   ```
+
+   ```bash
+   hermes -p my-general config env-path
+   ```
+
+   That is the **only** place real secrets go — never back into the repo.
+
+5. **Create the profile's `.env` from its `.env.EXAMPLE`, only if it does not already exist.** In PowerShell:
+
+   ```powershell
+   $envPath = hermes -p my-general config env-path
+   $examplePath = Join-Path (Split-Path $envPath) ".env.EXAMPLE"
+   if (-not (Test-Path $envPath)) {
+     Copy-Item $examplePath $envPath
+     Write-Host "Created $envPath — fill in the keys you need."
+   } else {
+     Write-Host "$envPath already exists — leaving it alone. Diff .env.EXAMPLE against it and report any missing keys."
+   }
+   ```
+
+   In bash:
+
+   ```bash
+   env_path="$(hermes -p my-general config env-path)"
+   example_path="$(dirname "$env_path")/.env.EXAMPLE"
+   if [ ! -f "$env_path" ]; then
+     cp "$example_path" "$env_path"
+     echo "Created $env_path — fill in the keys you need."
+   else
+     echo "$env_path already exists — leaving it alone. Diff .env.EXAMPLE against it and report any missing keys."
+   fi
+   ```
+
+6. **Verify.** Report the output of both:
+
+   ```powershell
+   hermes -p my-general config check
+   hermes -p my-general doctor
+   ```
+
+   ```bash
+   hermes -p my-general config check
+   hermes -p my-general doctor
+   ```
+
+   Missing provider keys are **warnings, not errors** — they are expected until the user fills in `.env`. Any *config-level* error must be reported and stopped on.
+
+7. **Referenced skills.** This persona authors no skills — it *references* verified-real skill ids from trusted registries, listed machine-readably in `dist/<persona>/skills.install.json` and as a copy-paste block in `dist/<persona>/README.md`. `hermes profile install` does **not** auto-install them, so run each line from the README block as-is (`hermes skills install …` / `hermes skills tap add …`) — or use Runbook B's bootstrap, which auto-installs them. Do **not** invent new skill IDs.
+
+8. **Updates later.** To pick up template changes without touching user-owned files:
+
+   ```powershell
+   python -m configurator compile <persona>
+   hermes profile update my-general
+   ```
+
+   ```bash
+   python -m configurator compile <persona>
+   hermes profile update my-general
+   ```
+
+9. **Report** what changed: profile name, resolved `HERMES_HOME`, whether `.env` was created or preserved, which keys still need values, and both verification outputs.
+
+### Must NOT do (Runbook A)
+
+- Do **not** write real secret values into this repo (not into `dist/`, not into any file under the repo root).
+- Do **not** overwrite an existing `.env` in the target profile.
+- Do **not** target the profile name `default` — that is Runbook B.
+- Do **not** hardcode `HERMES_HOME` — always resolve it via `hermes config path` or the env var.
+
+---
+
+## Runbook B — Apply a persona to the default profile via bootstrap
+
+Use this when you want the persona to *become* your default Hermes install (single-profile setups). The bootstrap script does the same safe merge as Runbook A but targets the default `HERMES_HOME` root instead of a named profile.
+
+### Prompt (paste to the agent)
+
+> You are applying a Hermes profile distribution to the **default** profile using this repo's `bootstrap` script. Preview with `-DryRun` / `--dry-run` first, then apply. Never overwrite an existing `.env`, never write real secrets into this repo. After finishing, verify with `hermes config check` and `hermes doctor` and report exactly what changed.
+
+### Steps
+
+1. **Pick the persona.** Default template is `base/general`; any leaf under `dist/` is valid. Confirm the persona directory exists:
+
+   ```powershell
+   Test-Path .\dist\general\distribution.yaml
+   ```
+
+   ```bash
+   test -f ./dist/general/distribution.yaml && echo ok
+   ```
+
+2. **Run the optional external-skills prep step above** (best-effort, ignore failure).
+
+3. **Preview.**
+
+   ```powershell
+   .\bootstrap.ps1 -Template general -DryRun
+   ```
+
+   ```bash
+   chmod +x bootstrap.sh
+   ./bootstrap.sh --template general --dry-run
+   ```
+
+   The output lists every file that would be written, replaced, or preserved. Read it before proceeding.
+
+4. **Apply.**
+
+   ```powershell
+   .\bootstrap.ps1 -Template general
+   ```
+
+   ```bash
+   ./bootstrap.sh --template general
+   ```
+
+   Bootstrap is idempotent and non-destructive. Its guarantees:
+
+   | Target file | Fresh install | Existing install |
+   | --- | --- | --- |
+   | Safety backup | skipped | `hermes backup` (or zip/tar fallback) |
+   | `config.yaml` | written | existing → `config.yaml.bak.<timestamp>`, then replaced |
+   | `SOUL.md` | written | **preserved** unless it still contains the unconfigured marker |
+   | `skills/` | copied only if the dist ships one | **merged** — other skills never deleted (reference-only personas ship no `skills/`, so this is normally a no-op) |
+   | Referenced skills | auto-installed from `skills.install.json` (with your confirmation) | same — `hermes skills install` / `tap add`, failure-tolerant |
+   | `.env` | created from generated `.env.EXAMPLE` | **never overwritten**; missing keys are reported |
+
+   Flags: `-DryRun` / `--dry-run`, `-Force` / `--force`, `-SkipBackup` / `--skip-backup`, `-SkipSkills` / `--skip-skills`, `-SkipOpenSkills` / `--skip-open-skills`, `-SkipSkillsInstall` / `--skip-skills-install`, `-Yes` / `--yes` (auto-confirm the referenced-skill install prompt), `-HermesHome PATH` / `--hermes-home PATH`. The template flag is `-Template <name>` / `--template <name>` and defaults to `base/general` — do **not** invent other flag names.
+
+5. **Fill in `.env`.** Bootstrap prints the resolved path. Open it and fill in the keys you need. All `base/general` provider keys are optional — any one is enough.
+
+   ```powershell
+   hermes config env-path
+   ```
+
+   ```bash
+   hermes config env-path
+   ```
+
+   Never write real key values anywhere under this repo.
+
+6. **Verify.** Report the output of both:
+
+   ```powershell
+   hermes config check
+   hermes doctor
+   ```
+
+   ```bash
+   hermes config check
+   hermes doctor
+   ```
+
+   If `config check` reports schema drift after a Hermes upgrade, run `hermes config migrate`.
+
+7. **Referenced skills (auto-installed).** Bootstrap already ran the persona's referenced-skill installs from `dist/<persona>/skills.install.json` — `hermes skills install …` / `hermes skills tap add …`, gated by your confirmation (`-Yes` / `--yes` to auto-confirm, `-SkipSkillsInstall` / `--skip-skills-install` to skip) and tolerant of individual failures. To (re)run them manually, use the copy-paste block in `dist/<persona>/README.md`. Do **not** invent skill IDs.
+
+8. **Report** what changed: resolved `HERMES_HOME`, backup path (if any), which files were written/replaced/preserved/skipped, whether `.env` was created or preserved, which keys still need values, and both verification outputs.
+
+### Must NOT do (Runbook B)
+
+- Do **not** write real secret values into this repo.
 - Do **not** overwrite an existing `.env`.
-- Do **not** delete skills, memories, sessions, or `auth.json`.
-- Do **not** hardcode a `HERMES_HOME` path — always resolve it dynamically.
+- Do **not** delete skills, memories, sessions, `auth.json`, `models.json`, `desktop.json`, or any state DB.
+- Do **not** hardcode `HERMES_HOME` — always resolve it dynamically.
+- Do **not** invent CLI flags. The bootstrap template flag is `-Template` / `--template`; there is no long-form on PowerShell and no short-form on POSIX.
 
-## Extending an existing install (optional follow-ups)
+---
 
-- Add an MCP server: `hermes mcp add <name> --command <cmd> --args <...>` or
-  `hermes mcp add <name> --url <endpoint>`; then `hermes mcp test <name>`.
-  (This config ships with **no** MCP servers configured.)
-- Install more skills: `hermes skills search <q>` / `hermes skills install <source/id>`.
-- Change the model/provider: `hermes model` or edit `model.provider` / `model.default`
-  in `config.yaml`, then `hermes config check`.
+## When to prefer which runbook
+
+- **Runbook A (named profile)** — the safe default. Cleanest, sandboxed, easy to delete with `hermes profile delete <name>`. Use this when trying out a persona, running multiple personas side-by-side, or when the default profile is already configured and in use.
+- **Runbook B (default profile via bootstrap)** — use only when you want *this* persona to be the default agent on the machine. Bootstrap is still non-destructive, but it modifies the default profile in place.
+
+Both runbooks leave the repo untouched. Real secrets never leave `HERMES_HOME`.

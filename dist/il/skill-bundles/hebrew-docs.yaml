@@ -1,0 +1,10 @@
+description: Hebrew/RTL document production — letters, forms, spreadsheets, PDFs.
+instruction: 'Follow hebrew-rtl-best-practices for Hebrew RTL output; use the Anthropic doc skills for docx/pdf/xlsx generation once installed.
+
+  '
+name: hebrew-docs
+skills:
+- hebrew-rtl-best-practices
+- docx
+- pdf
+- xlsx

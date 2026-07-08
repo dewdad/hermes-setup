@@ -1,0 +1,40 @@
+name: developer
+kind: persona
+extends: base/general
+
+distribution:
+  description: Software-developer agent — TDD, PR workflow, code review, terminal, on the free chain.
+  version: 1.0.0
+  license: MIT
+  author: hermes-setup
+
+# The `coding` toolset gives the developer terminal + files + web + skills + delegate + browser
+# (verified config check-clean). This makes the required terminal capability explicit.
+config:
+  toolsets:
+    - coding
+
+soul:
+  fragments:
+    - developer.md
+
+# Reference-only: no authored skills. Bulk bundled skills stay suppressed (.no-bundled-skills). The
+# developer workflow (TDD, debugging, git, planning, code review, PR lifecycle) is provided by the
+# obra/superpowers tap referenced below — its skills cover exactly the plan-named TDD/PR/review
+# capabilities, so no standalone community tdd/pr/review skills are referenced (none are trusted).
+skills:
+  bundled: none
+
+# Battle-tested dev libraries referenced post-install (bucket 3), auto-installed by the apply flow.
+# Verified real via `hermes skills search`:
+#   - obra/superpowers → real repo (skills.sh indexes skills-sh/obra/superpowers/*); added as a tap,
+#     supplying TDD / systematic-debugging / git / code-review / planning workflow skills.
+#   - garrytan/gstack → a Hermes default tap (browser QA, ship, design-review, scrape).
+# `huggingface/skills` and `NVIDIA/skills` are Hermes DEFAULT taps already searchable, so they are
+# left out of the auto-install list (opt-in). Inherits duckduckgo-search from base/general.
+post_install:
+  - id: obra/superpowers
+    note: TDD / debugging / git / code-review / planning workflows (adds the tap).
+    tap: true
+  - id: skills-sh/garrytan/gstack/gstack
+    note: Browser QA, ship, design-review, scrape.

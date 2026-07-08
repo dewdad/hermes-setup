@@ -1,0 +1,28 @@
+name: il-legal
+kind: persona
+extends: locale/il
+
+distribution:
+  description: Israeli legal-tech assistant — contracts, tax, compliance, with strict disclaimers.
+  version: 1.0.0
+  license: MIT
+  author: hermes-setup
+
+soul:
+  fragments:
+    - legal-scope.md
+
+# Reference-only: no authored skills. Legal framing, disclaimers, tax/contract/compliance guidance,
+# and accessibility scope are enforced by the legal-scope SOUL fragment plus inherited Hebrew/RTL +
+# doc skills (docx/pdf for drafting).
+# NOTE (verified 2026-07 via `hermes skills search`): NO trusted-registry skill exists for Israeli
+# legal disclaimers, tax returns, contract review, or accessibility compliance — only unvetted
+# community entries — so per the reference-only contract none are referenced here (not authored).
+skills:
+  bundled: none
+
+# Bucket 3 (referenced post-install, auto-installed by the apply flow). Verified real via
+# `hermes skills search hebrew` → the skills-il tap. Inherits the IL doc skills from locale/il.
+post_install:
+  - id: skills-sh/skills-il/localization/hebrew-rtl-best-practices
+    note: Community RTL/Hebrew best-practices from the skills-il tap. Free to run.

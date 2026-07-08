@@ -1,0 +1,34 @@
+{
+  "skills": [
+    {
+      "id": "official/research/duckduckgo-search",
+      "note": "Keyless DuckDuckGo web search fallback for the `web` toolset. Official, free to run.",
+      "tap": false
+    },
+    {
+      "id": "skills-sh/anthropics/skills/docx",
+      "note": "Word documents (Hebrew letters, forms). Source-available; free to run locally.",
+      "tap": false
+    },
+    {
+      "id": "skills-sh/anthropics/skills/pdf",
+      "note": "PDF generation/extraction. Source-available; free to run locally.",
+      "tap": false
+    },
+    {
+      "id": "skills-sh/anthropics/skills/pptx",
+      "note": "Presentations. Source-available; free to run locally.",
+      "tap": false
+    },
+    {
+      "id": "skills-sh/anthropics/skills/xlsx",
+      "note": "Spreadsheets. Source-available; free to run locally.",
+      "tap": false
+    },
+    {
+      "id": "skills-sh/skills-il/localization/hebrew-rtl-best-practices",
+      "note": "Community RTL/Hebrew best-practices from the skills-il tap. Free to run.",
+      "tap": false
+    }
+  ]
+}

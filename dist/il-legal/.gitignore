@@ -1,0 +1,14 @@
+# Hermes profile distribution — safe artifacts only. Never commit secrets or runtime state.
+.env
+*.env
+!.env.EXAMPLE
+auth.json
+models.json
+desktop.json
+state.db*
+response_store.db*
+sessions/
+memories/
+logs/
+*.bak
+*.bak.*

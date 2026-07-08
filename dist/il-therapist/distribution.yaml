@@ -1,0 +1,29 @@
+author: hermes-setup
+description: Hebrew emotional-support companion — empathic, boundaried, crisis-aware. Not therapy.
+distribution_owned:
+- README.md
+- SOUL.md
+- config.yaml
+- cron
+- distribution.yaml
+- mcp.json
+- skill-bundles
+- skills.install.json
+- skills.sh.json
+env_requires:
+- description: Primary provider (zenmux) — top up credits and create a Pay As You Go key at https://zenmux.ai/platform/pay-as-you-go; restrict the key to free models if you want to use only free-tier quota and avoid spending paid credits.
+  name: ZENMUX_API_KEY
+  required: false
+- description: Fallback provider (opencode-zen / big-pickle) — sign in and create/copy a Zen API key at https://opencode.ai/auth.
+  name: OPENCODE_ZEN_API_KEY
+  required: false
+- description: Fallback provider (nvidia / glm-5.2) — generate a NVIDIA Build API key at https://build.nvidia.com/settings/api-keys.
+  name: NVIDIA_API_KEY
+  required: false
+- description: Vision aux (gemini) — create a Google AI Studio Gemini API key at https://aistudio.google.com/app/apikey. GEMINI_API_KEY also accepted.
+  name: GOOGLE_API_KEY
+  required: false
+hermes_requires: '>=0.18.0'
+license: MIT
+name: il-therapist
+version: 1.0.0

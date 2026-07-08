@@ -1,0 +1,16 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "description": "Hebrew-first Israeli agent — RTL-aware, gov/forms-ready, on the free base chain.",
+  "groupings": [
+    {
+      "name": "bundle:hebrew-docs",
+      "skills": [
+        "hebrew-rtl-best-practices",
+        "docx",
+        "pdf",
+        "xlsx"
+      ]
+    }
+  ],
+  "name": "il"
+}

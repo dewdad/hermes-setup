@@ -1,0 +1,26 @@
+[project]
+name = "hermes-configurator"
+version = "1.0.0"
+description = "Template compiler: layered declarative templates -> native Hermes profile distributions."
+requires-python = ">=3.11"
+# stdlib + PyYAML ONLY, by contract (see AGENTS.md). No other runtime dependency.
+dependencies = ["PyYAML>=6.0"]
+
+[project.scripts]
+configurator = "configurator.compile:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["configurator"]
+
+# The package is intentionally stdlib+PyYAML. Tests use stdlib unittest:
+#   python -m unittest discover -s tests -p "test_*.py"
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "PLR2004", "SLF001", "D", "ARG"]

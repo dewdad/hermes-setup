@@ -1,0 +1,9 @@
+{
+  "skills": [
+    {
+      "id": "official/research/duckduckgo-search",
+      "note": "Keyless DuckDuckGo web search fallback for the `web` toolset. Official, free to run.",
+      "tap": false
+    }
+  ]
+}

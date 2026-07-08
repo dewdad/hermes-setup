@@ -1,0 +1,32 @@
+name: configurator
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime dependency (PyYAML only)
+        run: python -m pip install --upgrade "PyYAML>=6.0"
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Compile all templates from locks (offline)
+        run: python -m configurator compile --all
+
+      - name: Committed dist/ is fresh (no diff after recompile)
+        run: git diff --exit-code -- dist/
+
+      - name: Verify gates (config / secret / lock / DOX chain)
+        run: python -m configurator verify

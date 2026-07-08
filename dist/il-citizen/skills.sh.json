@@ -1,0 +1,16 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "description": "Everyday Israeli citizen assistant — gov services, consumer rights, forms, budgeting.",
+  "groupings": [
+    {
+      "name": "bundle:hebrew-docs",
+      "skills": [
+        "hebrew-rtl-best-practices",
+        "docx",
+        "pdf",
+        "xlsx"
+      ]
+    }
+  ],
+  "name": "il-citizen"
+}

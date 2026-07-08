@@ -1,0 +1,46 @@
+name: il
+kind: locale
+extends: base/general
+
+distribution:
+  description: Hebrew-first Israeli agent — RTL-aware, gov/forms-ready, on the free base chain.
+  version: 1.0.0
+  license: MIT
+  author: hermes-setup
+
+soul:
+  fragments:
+    - he-style.md
+
+# Reference-only: this repo authors no skills. Hebrew/RTL correctness and document generation come
+# from verified-real trusted-registry skills auto-installed by the apply flow (see post_install).
+# The persona SOUL fragments (he-style.md, inherited identity/safety) shape Hebrew-first behavior.
+skills:
+  bundled: none
+
+# Bundle grouping Hebrew doc production — references the real skill names the post_install block
+# installs (skills.sh installs `anthropics/skills/docx` as local skill `docx`, etc.).
+bundles:
+  - name: hebrew-docs
+    description: Hebrew/RTL document production — letters, forms, spreadsheets, PDFs.
+    skills: [hebrew-rtl-best-practices, docx, pdf, xlsx]
+    instruction: >
+      Follow hebrew-rtl-best-practices for Hebrew RTL output; use the Anthropic doc skills for
+      docx/pdf/xlsx generation once installed.
+
+# Bucket 3 (referenced post-install, auto-installed by the apply flow). Every id below is verified
+# real via `hermes skills search`:
+#   - anthropics docx/pdf/pptx/xlsx  → trusted (skills.sh, source-available; free to run locally)
+#   - skills-il hebrew-rtl-best-practices → real community skill from the skills-il tap
+# Every IL persona inherits these.
+post_install:
+  - id: skills-sh/anthropics/skills/docx
+    note: Word documents (Hebrew letters, forms). Source-available; free to run locally.
+  - id: skills-sh/anthropics/skills/pdf
+    note: PDF generation/extraction. Source-available; free to run locally.
+  - id: skills-sh/anthropics/skills/pptx
+    note: Presentations. Source-available; free to run locally.
+  - id: skills-sh/anthropics/skills/xlsx
+    note: Spreadsheets. Source-available; free to run locally.
+  - id: skills-sh/skills-il/localization/hebrew-rtl-best-practices
+    note: Community Hebrew/RTL best-practices from the skills-il tap. Free to run.

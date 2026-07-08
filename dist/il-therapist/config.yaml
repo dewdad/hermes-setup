@@ -1,0 +1,51 @@
+_config_version: 33
+agent:
+  verify_on_stop: false
+auxiliary:
+  vision:
+    api_key: ''
+    base_url: ''
+    fallback_chain:
+    - model: stepfun/step-3.7-flash:free
+      provider: nous
+    model: gemini-3.1-flash
+    provider: gemini
+    timeout: 90
+delegation:
+  inherit_mcp_toolsets: true
+  max_concurrent_children: 3
+  max_spawn_depth: 2
+  model: anthropic/claude-fable-5-free
+  orchestrator_enabled: true
+  provider: zenmux
+  reasoning_effort: high
+display:
+  tool_progress: all
+fallback_providers:
+- model: big-pickle
+  provider: opencode-zen
+- model: glm-5.2
+  provider: nvidia
+- model: stepfun/step-3.7-flash:free
+  provider: nous
+model:
+  base_url: ''
+  default: anthropic/claude-sonnet-5-free
+  max_tokens: 8192
+  provider: zenmux
+plugins:
+  enabled: []
+providers:
+  zenmux:
+    base_url: https://zenmux.ai/api/v1
+    key_env: ZENMUX_API_KEY
+security:
+  redact_secrets: true
+skills:
+  external_dirs:
+  - ~/open-skills/skills
+toolsets:
+- safe
+web:
+  backend: firecrawl
+  use_gateway: true

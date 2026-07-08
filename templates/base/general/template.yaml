@@ -1,0 +1,99 @@
+name: general
+kind: base
+
+distribution:
+  description: General-purpose Hermes agent on a free, no-lock-in model chain.
+  version: 1.0.0
+  license: MIT
+  author: hermes-setup
+
+# Reproduces the verified live 0-cost chain: any single provider key yields a working agent.
+config:
+  model:
+    provider: zenmux
+    default: anthropic/claude-sonnet-5-free
+    max_tokens: 8192
+    base_url: ''
+  providers:
+    zenmux:
+      base_url: https://zenmux.ai/api/v1
+      key_env: ZENMUX_API_KEY
+  fallback_providers:
+    - provider: opencode-zen
+      model: big-pickle
+    - provider: nvidia
+      model: glm-5.2
+    - provider: nous
+      model: stepfun/step-3.7-flash:free
+  delegation:
+    model: anthropic/claude-fable-5-free
+    provider: zenmux
+    reasoning_effort: high
+    max_concurrent_children: 3
+    max_spawn_depth: 2
+    orchestrator_enabled: true
+    inherit_mcp_toolsets: true
+  agent:
+    verify_on_stop: false
+  web:
+    backend: firecrawl
+    use_gateway: true
+  auxiliary:
+    vision:
+      provider: gemini
+      model: gemini-3.1-flash
+      base_url: ''
+      api_key: ''
+      timeout: 90
+      fallback_chain:
+        - provider: nous
+          model: stepfun/step-3.7-flash:free
+  display:
+    tool_progress: all
+  security:
+    redact_secrets: true
+  plugins:
+    enabled: []
+
+# Every provider/fallback key is optional — any ONE yields a working, 0-cost agent.
+env:
+  - name: ZENMUX_API_KEY
+    description: Primary provider (zenmux) — top up credits and create a Pay As You Go key at https://zenmux.ai/platform/pay-as-you-go; restrict the key to free models if you want to use only free-tier quota and avoid spending paid credits.
+    required: false
+  - name: OPENCODE_ZEN_API_KEY
+    description: Fallback provider (opencode-zen / big-pickle) — sign in and create/copy a Zen API key at https://opencode.ai/auth.
+    required: false
+  - name: NVIDIA_API_KEY
+    description: Fallback provider (nvidia / glm-5.2) — generate a NVIDIA Build API key at https://build.nvidia.com/settings/api-keys.
+    required: false
+  - name: GOOGLE_API_KEY
+    description: Vision aux (gemini) — create a Google AI Studio Gemini API key at https://aistudio.google.com/app/apikey. GEMINI_API_KEY also accepted.
+    required: false
+
+soul:
+  fragments:
+    - identity.md
+    - style.md
+    - safety.md
+
+skills:
+  bundled: none
+  external_dirs:
+    - ~/open-skills/skills
+
+# Bucket 3 (referenced post-install, auto-installed by the apply flow): free web search so the
+# `web` toolset works with no FIRECRAWL_API_KEY. Verified real via `hermes skills search duckduckgo`
+# → `official/research/duckduckgo-search` (official source, builtin trust; free to run locally).
+post_install:
+  - id: official/research/duckduckgo-search
+    note: Keyless DuckDuckGo web search fallback for the `web` toolset. Official, free to run.
+
+# Opt-in daily pull of the shared external skills checkout. Hermes never auto-schedules
+# distribution cron — the user enables it explicitly. Absence of ~/open-skills is tolerated.
+cron:
+  - name: open-skills-sync
+    schedule: "0 4 * * *"
+    command: git
+    args: ["-C", "~/open-skills", "pull", "--ff-only"]
+    enabled: false
+    description: Daily fast-forward pull of the shared ~/open-skills checkout (opt-in).

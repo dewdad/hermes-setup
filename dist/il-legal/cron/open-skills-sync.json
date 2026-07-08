@@ -1,0 +1,13 @@
+{
+  "args": [
+    "-C",
+    "~/open-skills",
+    "pull",
+    "--ff-only"
+  ],
+  "command": "git",
+  "description": "Daily fast-forward pull of the shared ~/open-skills checkout (opt-in).",
+  "enabled": false,
+  "name": "open-skills-sync",
+  "schedule": "0 4 * * *"
+}

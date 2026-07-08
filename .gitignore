@@ -1,28 +1,42 @@
-# Never commit real secrets — the real .env lives in HERMES_HOME, not here.
+# Secrets — never commit. Real secrets live in HERMES_HOME/.env, never in this repo.
 .env
 *.env
-!.env.example
+# NOTE: per-distribution `.env.EXAMPLE` files under dist/ ARE committed (they contain no secrets).
 
-# Local Hermes backups / state that may be produced during testing
+# Hermes runtime/state artifacts (only if ever copied in)
+auth.json
+models.json
+desktop.json
+state.db*
+response_store.db*
+kanban.db*
+sessions/
+memories/
+logs/
+cache/
+mcp-tokens/
+
+# Local backups / archives produced during testing
 *.bak
 *.bak.*
-hermes-home/**/*.bak
-hermes-home/**/*.bak.*
 *.zip
 *.tar.gz
 
-# Hermes runtime/state artifacts that must NOT be versioned if ever copied in
-hermes-home/auth.json
-hermes-home/.env
-hermes-home/state.db*
-hermes-home/response_store.db*
-hermes-home/kanban.db*
-hermes-home/sessions/
-hermes-home/memories/
-hermes-home/logs/
-hermes-home/cache/
-hermes-home/*_cache*.json
-hermes-home/mcp-tokens/
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+# NOTE: `dist/` here is COMMITTED (compiled Hermes distributions), NOT a Python build dir — do not ignore it.
+
+# Local agent / tooling state
+.omo/
+.codegraph/
+.dev/
+.kilo/
 
 # OS / editor noise
 .DS_Store

@@ -1,0 +1,19 @@
+{
+  "skills": [
+    {
+      "id": "official/research/duckduckgo-search",
+      "note": "Keyless DuckDuckGo web search fallback for the `web` toolset. Official, free to run.",
+      "tap": false
+    },
+    {
+      "id": "obra/superpowers",
+      "note": "TDD / debugging / git / code-review / planning workflows (adds the tap).",
+      "tap": true
+    },
+    {
+      "id": "skills-sh/garrytan/gstack/gstack",
+      "note": "Browser QA, ship, design-review, scrape.",
+      "tap": false
+    }
+  ]
+}

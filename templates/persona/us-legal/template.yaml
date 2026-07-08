@@ -1,0 +1,29 @@
+name: us-legal
+kind: persona
+extends: base/general
+
+distribution:
+  description: US legal-research assistant — jurisdiction-aware information with strict disclaimers.
+  version: 1.0.0
+  license: MIT
+  author: hermes-setup
+
+soul:
+  fragments:
+    - us-legal-scope.md
+
+# Reference-only: no authored skills. Jurisdiction-aware framing and strict disclaimers are enforced
+# by the us-legal-scope SOUL fragment. Web research uses the inherited duckduckgo-search reference.
+# NOTE (verified 2026-07 via `hermes skills search`): NO trusted-registry skill exists for US legal
+# disclaimers or US legal research — only unvetted community entries — so per the reference-only
+# contract none are referenced here (not authored).
+skills:
+  bundled: none
+
+# Bucket 3 (referenced post-install, auto-installed by the apply flow). Verified real via
+# `hermes skills search pdf/docx` → anthropics (trusted). Inherits duckduckgo-search from base.
+post_install:
+  - id: skills-sh/anthropics/skills/pdf
+    note: Read/produce legal PDFs. Source-available; free to run locally.
+  - id: skills-sh/anthropics/skills/docx
+    note: Draft legal documents in Word. Source-available; free to run locally.

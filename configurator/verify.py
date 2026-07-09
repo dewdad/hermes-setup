@@ -51,6 +51,13 @@ def _secret_gate(root: Path, fails: list[str]) -> None:
     for name in _FORBIDDEN_IN_DIST:
         for hit in dist.rglob(name):
             fails.append(f"forbidden file committed in dist/: {hit.relative_to(root)}")
+    # The repo-root profiles.json catalogue is generated + committed like dist/; scan it too.
+    catalog = root / "profiles.json"
+    if catalog.is_file():
+        try:
+            scan_text(catalog.read_text(encoding="utf-8"), where="profiles.json")
+        except SecretLeakError as err:
+            fails.append(str(err))
 
 
 def _config_key_gate(root: Path) -> None:

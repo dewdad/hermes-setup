@@ -1,0 +1,69 @@
+{
+  "agent_instructions": "You are pointed at the hermes-setup repo. To set up a Hermes agent from it: (1) present the `profiles` list below to the user (each entry's `name` + `description`); (2) ask which one they want; (3) install the chosen <name> by running its `install_command`. IMPORTANT: `hermes profile install` cannot install from a repo-subdirectory URL, so the profile must be installed from a LOCAL clone of this repo. The simplest path is the bundled installer, which does the clone + install for you: `./install.sh <name>` (POSIX) or `./install.ps1 <name>` (Windows). Equivalently, clone the repo and run `hermes profile install ./dist/<name> --name <name> --yes`. After install, open the profile (`hermes -p <name>`) and run `/finish-setup`.",
+  "generated_by": "python -m configurator compile",
+  "hermes_requires": ">=0.18.0",
+  "install": {
+    "note": "hermes profile install cannot target a subdirectory of a git repo (it clones the URL root and requires distribution.yaml there). Install from a local clone: run ./install.sh <name> (POSIX) or ./install.ps1 <name> (Windows), or clone this repo then hermes profile install ./dist/<name> --name <name> --yes.",
+    "posix_script": "./install.sh",
+    "windows_script": "./install.ps1"
+  },
+  "profiles": [
+    {
+      "description": "Software-developer agent — TDD, PR workflow, code review, terminal, on the free chain.",
+      "install_command": "hermes profile install ./dist/developer --name developer --yes",
+      "kind": "persona",
+      "name": "developer",
+      "path": "dist/developer",
+      "version": "1.0.0"
+    },
+    {
+      "description": "General-purpose Hermes agent on a free, no-lock-in model chain.",
+      "install_command": "hermes profile install ./dist/general --name general --yes",
+      "kind": "base",
+      "name": "general",
+      "path": "dist/general",
+      "version": "1.0.0"
+    },
+    {
+      "description": "Hebrew-first Israeli agent — RTL-aware, gov/forms-ready, on the free base chain.",
+      "install_command": "hermes profile install ./dist/il --name il --yes",
+      "kind": "locale",
+      "name": "il",
+      "path": "dist/il",
+      "version": "1.0.0"
+    },
+    {
+      "description": "Everyday Israeli citizen assistant — gov services, consumer rights, forms, budgeting.",
+      "install_command": "hermes profile install ./dist/il-citizen --name il-citizen --yes",
+      "kind": "persona",
+      "name": "il-citizen",
+      "path": "dist/il-citizen",
+      "version": "1.0.0"
+    },
+    {
+      "description": "Israeli legal-tech assistant — contracts, tax, compliance, with strict disclaimers.",
+      "install_command": "hermes profile install ./dist/il-legal --name il-legal --yes",
+      "kind": "persona",
+      "name": "il-legal",
+      "path": "dist/il-legal",
+      "version": "1.0.0"
+    },
+    {
+      "description": "Hebrew emotional-support companion — empathic, boundaried, crisis-aware. Not therapy.",
+      "install_command": "hermes profile install ./dist/il-therapist --name il-therapist --yes",
+      "kind": "persona",
+      "name": "il-therapist",
+      "path": "dist/il-therapist",
+      "version": "1.0.0"
+    },
+    {
+      "description": "US legal-research assistant — jurisdiction-aware information with strict disclaimers.",
+      "install_command": "hermes profile install ./dist/us-legal --name us-legal --yes",
+      "kind": "persona",
+      "name": "us-legal",
+      "path": "dist/us-legal",
+      "version": "1.0.0"
+    }
+  ],
+  "schema": "hermes-setup/profiles@1"
+}

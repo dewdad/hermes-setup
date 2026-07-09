@@ -45,8 +45,13 @@ distributions under `dist/<persona>/`. Pure library + CLI; no installer behavior
   - `loader.py` — discover templates + resolve `extends` chain.
   - `sources.py` + `fetch.py` + `locks.py` — vendoring + lockfile IO.
   - `ingest.py` — drift detection from live `config.yaml`.
-  - `verify.py` — aggregate quality gates.
-  - `compile.py` — CLI (`compile`, `verify`, `update-locks`, `ingest`).
+  - `catalog.py` — build the repo-root `profiles.json` catalogue: every installable profile's
+    name / description / version / `dist/<name>` path + ready-to-run `install_command`, plus an
+    `agent_instructions` recipe. Pure function; embeds NO repo URL (deterministic across forks).
+  - `verify.py` — aggregate quality gates (also secret-scans the repo-root `profiles.json`).
+  - `compile.py` — CLI (`compile`, `verify`, `update-locks`, `ingest`); on every non-dry-run
+    compile writes the repo-root `profiles.json` from the FULL registry (secret-scanned first), so
+    the catalogue never drifts from `dist/` even after a single-template compile.
 
 ## Work Guidance
 

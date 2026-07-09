@@ -12,11 +12,27 @@ from collections.abc import Sequence
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from configurator.catalog import CATALOG_FILENAME, build_catalog
 from configurator.emit import emit_distribution
 from configurator.errors import ConfiguratorError
 from configurator.loader import discover_templates, load_and_resolve, ref_for_name
+from configurator.model import Template
+from configurator.secretscan import scan_text
+from configurator.yamlio import dump_json, write_text
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _write_catalog(root: Path, registry: dict[str, Template]) -> None:
+    """Write the repo-root ``profiles.json`` from the FULL registry (every leaf, not just targets).
+
+    Regenerated on every non-dry-run compile so the catalogue never drifts from ``dist/`` even after
+    a single-template compile. Secret-scanned before writing, like every other emitted artifact.
+    """
+    templates = [load_and_resolve(ref, registry) for ref in sorted(registry)]
+    text = dump_json(build_catalog(templates))
+    scan_text(text, where=CATALOG_FILENAME)
+    write_text(root / CATALOG_FILENAME, text)
 
 
 def run(
@@ -37,6 +53,8 @@ def run(
         else:
             emit_distribution(merged, root / "dist" / merged.name, payloads)
         written.append(merged.name)
+    if not dry_run:
+        _write_catalog(root, registry)
     return written
 
 

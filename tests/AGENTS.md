@@ -92,6 +92,32 @@ deterministic emit) and must never damage the developer's live Hermes install.
   `hermes config path` resolves inside the temp home and is not the real home, aborting otherwise**.
   Like the sandbox, this is exempt from the `cfgtest-*` naming rule (the entire home is disposable).
   Covers G10 headless; the Desktop GUI (G9b) still requires the sandbox playbook.
+- **Saved-state CLI E2E (`tests/factory-home/`)** — the fully agent-driveable, headless regime with a
+  **snapshot/restore `HERMES_HOME`**: `factory-home.ps1` (Windows, primary bed) + `factory-home.sh`
+  (POSIX sibling) mirror the same actions and assertions. The Hermes **Desktop app shares this exact
+  `HERMES_HOME`** (`config.yaml`, `profiles/`, `auth.json`, `desktop.json`, `skills/`, `sessions/`), so
+  driving it through the `hermes` CLI exercises the same state the GUI renders — this is the
+  CLI-driveable Desktop surface (the actual GUI window still needs the sandbox playbook). A persistent
+  host **store** holds two homes: `<store>/factory/` (a snapshot of a post-install home — a "freshly
+  installed / factory-reset Desktop" with the compiled profile applied + Tier-0 skills) and
+  `<store>/work/` (the live home). Actions:
+  - **`Build`** (once) — fresh `profile install` + Tier-0 skill into `work/`, assert the Tier-0
+    contract, then mirror `work/ -> factory/`. Pays the install cost a single time.
+  - **`Reset`** (per run) — mirror `factory/ -> work/` (a fast robocopy/rsync `/MIR`, seconds, **NOT a
+    reinstall**) and re-assert the pristine contract. This is the **saved-state "start from a
+    factory-reset Desktop"** gate — the optimization that avoids reinstalling every turn.
+  - **`Dirty`** (per run) — leave `work/` **as-is** (accumulated `sessions/`/skills/config drift) and
+    run `hermes profile update` (and, with `-NewPersona` / `--new-persona <name>`, install ANOTHER
+    compiled persona) against it; asserts the update lands, the **G1** user-skill-survival guard holds,
+    and a newly-installed persona does not clobber the existing one. This is the **update/install
+    personas on a dirty install** gate.
+  - **`Status`** / **`Clean`** — inspect the store / remove it entirely.
+  **Host-safe by the same construction as blank-home:** `HERMES_HOME` is set **process-scoped** and
+  every action **hard-asserts `hermes config path` resolves inside the store** (and that the store is
+  not the real home), aborting otherwise. Store default: `%LOCALAPPDATA%\hermes-e2e\<template>` (POSIX
+  `${XDG_DATA_HOME:-$HOME/.local/share}/hermes-e2e/<template>`). Exempt from the `cfgtest-*` naming rule
+  (the whole store is a throwaway home). Because the store deliberately persists across runs (that is
+  the saved-state point), it is not auto-torn-down — `Clean` (or deleting the store) resets it.
 - **Unit tests** — stdlib `unittest` only (no pytest, no third-party runners). File layout:
   `tests/test_<module>.py` mirroring `configurator/<module>.py`.
 - **Secret hygiene (inherited from root)** — tests MUST NOT commit real secrets, real

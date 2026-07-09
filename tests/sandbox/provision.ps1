@@ -62,8 +62,11 @@ if ($PersistRoot) {
   New-Item -ItemType Directory -Force -Path $env:HERMES_HOME, $env:PLAYWRIGHT_BROWSERS_PATH | Out-Null
   Write-Host "    PERSIST MODE: HERMES_HOME=$($env:HERMES_HOME) (mapped to host; install reused across runs; NOT blank-slate)"
 }
-$hermesHome = if ($env:HERMES_HOME) { $env:HERMES_HOME } else { Join-Path $env:LOCALAPPDATA 'hermes' }
-$profRoot   = Join-Path $hermesHome "profiles\$Template"
+# NB: do NOT name this $hermesHome — PowerShell vars are case-insensitive, so it would collide with
+# install.ps1's `param([string]$HermesHome=...)` when that script is Invoke-Expression'd in this scope,
+# and (since we read it first) trigger "Cannot overwrite variable HermesHome ... optimized". Use $ResolvedHome.
+$ResolvedHome = if ($env:HERMES_HOME) { $env:HERMES_HOME } else { Join-Path $env:LOCALAPPDATA 'hermes' }
+$profRoot     = Join-Path $ResolvedHome "profiles\$Template"
 $desktopDir = if ($PersistRoot) { Join-Path $PersistRoot 'hermes-desktop' } else { '' }
 
 # ---- 1. Fresh Hermes install ------------------------------------------------
@@ -71,7 +74,7 @@ Step "install Hermes (fresh, native Windows)"
 function Resolve-Hermes {
   # Persist mode ($env:HERMES_HOME set): the install lives UNDER HERMES_HOME. Resolve it there ONLY —
   # never accept a stray hermes.exe from PATH or the default %LOCALAPPDATA%\hermes, which would desync
-  # $profRoot (derived from $hermesHome) and make the reuse/reset/skip checks target the wrong home.
+  # $profRoot (derived from $ResolvedHome) and make the reuse/reset/skip checks target the wrong home.
   if ($env:HERMES_HOME) {
     foreach ($p in @(
       (Join-Path $env:HERMES_HOME 'hermes-agent\venv\Scripts\hermes.exe'),
@@ -122,7 +125,7 @@ if ($ResetState) {
     if (Test-Path (Join-Path $profRoot 'config.yaml')) { Remove-Item -LiteralPath $profRoot -Recurse -Force -ErrorAction SilentlyContinue }
   }
   foreach ($d in @('sessions', 'logs', 'memories')) {
-    $dir = Join-Path $hermesHome $d
+    $dir = Join-Path $ResolvedHome $d
     if (Test-Path $dir) { Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue }
   }
   Ok "reset done — profile reinstalled fresh + sessions/logs/memories cleared (install, caches, and any .env keys are preserved)"

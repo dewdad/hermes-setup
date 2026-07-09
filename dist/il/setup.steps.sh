@@ -16,3 +16,4 @@ _run_step() {
 }
 
 _run_step 'RTK (Rust Token Killer)' 'test -d "${HERMES_HOME:-$HOME/.hermes}/plugins/rtk-rewrite"' 'command -v rtk >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh; PATH="$HOME/.local/bin:$PATH" rtk init --agent hermes'
+_run_step 'Voice (STT/TTS) dependencies' 'python3 -c "import faster_whisper" >/dev/null 2>&1' 'python3 -m pip install --user --quiet faster-whisper piper-tts || true; command -v ffmpeg >/dev/null 2>&1 || { command -v brew >/dev/null 2>&1 && brew install ffmpeg; } || echo "note: install ffmpeg (e.g. sudo apt install ffmpeg / sudo dnf install ffmpeg) for Telegram voice bubbles"'

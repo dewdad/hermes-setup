@@ -17,6 +17,7 @@ here is free to run — the only cost is a few minutes of registration. When you
 | 4 | Beeper Desktop app | Optional (Tier 1) | The cross-platform messaging skill talks to the local Beeper Desktop app. |
 | 5 | A Google account | Optional (Tier 1) | Google Workspace (Gmail/Calendar/Drive/Docs/Sheets) OAuth, completed after install. |
 | 6 | Extra provider API keys | Optional | Unlock the higher-tier *free* models in the fallback chain. |
+| 7 | `ffmpeg` (for voice replies) | Optional | Auto-installed best-effort by the apply flow; needed only to render replies as Telegram/Discord *voice bubbles*. Free voice (STT + TTS) is on by default regardless. |
 
 ---
 
@@ -150,6 +151,31 @@ routes them for you):
 | `GOOGLE_API_KEY` | Create a Gemini key at <https://aistudio.google.com/app/apikey> (`GEMINI_API_KEY` also accepted). |
 
 Keys go into `HERMES_HOME/.env` only — never paste a key into chat or into any file under this repo.
+
+---
+
+## 7. Voice — free out of the box (optional extras)
+
+This profile ships **free voice on the default (Tier-0) path** — no key, no subscription:
+
+- **Inbound voice notes** (Telegram, Discord, WhatsApp, Slack, Signal) are transcribed by local
+  `faster-whisper` (`stt.provider: local`). STT is **never** a paid-gateway tool.
+- **Spoken replies** use the keyless **Edge** TTS voice (`tts.provider: edge`); fully-local **Piper**
+  is a documented alternative.
+- The apply flow's `voice-deps` setup step installs `faster-whisper`, `piper-tts`, and (best-effort)
+  **ffmpeg**. `ffmpeg` is needed only to render replies as Telegram/Discord *voice bubbles*; on Linux
+  without Homebrew, install it manually if missing: `sudo apt install ffmpeg` (or
+  `sudo dnf install ffmpeg`). Without ffmpeg, replies still send as playable audio files.
+- **Hebrew (the `il` locale + IL personas):** STT is pinned to the free **ivrit.ai** Hebrew model and
+  TTS to a **he-IL** Edge voice — still fully free/local. For **hybrid Hebrew/English ("Hebrish")**,
+  the multilingual default (or a Tier-1 cloud key) transcribes better than the Hebrew-only model.
+
+> **Free vs. paid vs. gateway (important).** Understanding voice notes (STT) and speaking replies
+> (TTS) are **free and never require the paid Nous Tool Gateway subscription** — the gateway's TTS
+> (OpenAI voices) is only an optional convenience. **Optional Tier-1 upgrades** (each needs its own
+> key; none required): a **free-tier Groq** key or a paid **OpenAI** / **ElevenLabs** key for
+> higher-quality or code-switching STT/TTS — add with `hermes config set <KEY> <value>`.
+> **Telegram** is the recommended first voice channel (richest native voice pipeline).
 
 ---
 

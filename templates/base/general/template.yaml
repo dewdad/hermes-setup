@@ -38,10 +38,11 @@ config:
   # Zero paid Nous Tool Gateway (Portal) routing by default. Hermes' rule: use_gateway:false uses a
   # direct backend if one exists and only *falls back* to the paid gateway when none does — so each
   # gateway-backed tool is both forced off the gateway AND pinned to a free/keyless direct backend,
-  # leaving no path to paid routing. web -> keyless DuckDuckGo; browser -> local Chromium. Both are
+  # leaving no path to paid routing. web -> keyless DuckDuckGo; browser -> local Chromium;
+  # tts -> free keyless `edge` (local Piper/NeuTTS/KittenTTS are offline alternatives). web/browser are
   # complemented by the keyless open-skills web-search-api + browser-automation-agent skills below.
-  # image_gen/tts ship no free local backend; the gateway stays off (they simply need a direct key
-  # if you ever opt to use them — never a paid-gateway call on the default, subscription-less path).
+  # ONLY image_gen ships no free backend; it stays gateway-off and just needs a direct key if a user
+  # opts in — never a paid-gateway call on the default, subscription-less path.
   web:
     backend: ddgs
     use_gateway: false
@@ -50,8 +51,18 @@ config:
     use_gateway: false
   image_gen:
     use_gateway: false
+  # Free voice, on by default (no key, no subscription). tts -> keyless Edge (he-IL + 74 languages);
+  # stt -> local faster-whisper (multilingual `small`, auto-detects Hebrew/English/"Hebrish"). Neither
+  # uses the paid gateway; STT is never a gateway tool at all. The voice-deps setup_steps entry
+  # provisions ffmpeg (Telegram voice bubbles) + faster-whisper/piper-tts. Locales/personas override
+  # the voice/language (e.g. locale/il pins Hebrew ivrit.ai STT + a he-IL voice).
   tts:
+    provider: edge
     use_gateway: false
+  stt:
+    provider: local
+    local:
+      model: small
   auxiliary:
     vision:
       provider: gemini
@@ -165,3 +176,16 @@ setup_steps:
     posix_run: 'command -v rtk >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh; PATH="$HOME/.local/bin:$PATH" rtk init --agent hermes'
     windows_check: 'Test-Path (Join-Path $env:HERMES_HOME ''plugins\rtk-rewrite'')'
     windows_run: '$d="$env:USERPROFILE\.local\bin"; New-Item -ItemType Directory -Force -Path $d | Out-Null; if (-not (Get-Command rtk -ErrorAction SilentlyContinue)) { $z="$env:TEMP\rtk.zip"; Invoke-WebRequest -Uri https://github.com/rtk-ai/rtk/releases/latest/download/rtk-x86_64-pc-windows-msvc.zip -OutFile $z; Expand-Archive -Path $z -DestinationPath $d -Force }; $env:PATH="$d;$env:PATH"; rtk init --agent hermes'
+  # Free voice deps (Tier 0). Provisions local STT/TTS so inbound voice notes transcribe and replies
+  # can speak, all keyless/subscription-less: faster-whisper (local Whisper STT), piper-tts (local TTS
+  # alternative to keyless Edge), and ffmpeg (required to deliver Telegram voice bubbles). Best-effort
+  # + failure-tolerant: pip deps install without privileges; ffmpeg auto-installs only via keyless
+  # managers (brew/winget) and otherwise prints a one-line manual hint (no sudo prompt to hang apply).
+  - id: voice-deps
+    label: Voice (STT/TTS) dependencies
+    tier: 0
+    note: Local faster-whisper (STT) + piper-tts (TTS) + ffmpeg for Telegram voice bubbles. Free, keyless.
+    posix_check: 'python3 -c "import faster_whisper" >/dev/null 2>&1'
+    posix_run: 'python3 -m pip install --user --quiet faster-whisper piper-tts || true; command -v ffmpeg >/dev/null 2>&1 || { command -v brew >/dev/null 2>&1 && brew install ffmpeg; } || echo "note: install ffmpeg (e.g. sudo apt install ffmpeg / sudo dnf install ffmpeg) for Telegram voice bubbles"'
+    windows_check: 'python -c "import faster_whisper" 2>$null; $LASTEXITCODE -eq 0'
+    windows_run: 'python -m pip install --quiet faster-whisper piper-tts; if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { try { winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements } catch { Write-Host "note: install ffmpeg manually for Telegram voice bubbles" } }'

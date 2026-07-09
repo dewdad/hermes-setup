@@ -51,9 +51,14 @@ skills:
   - meta-skills
   - ~/open-skills/skills
   - ~/multi-gws-cli
+stt:
+  local:
+    model: small
+  provider: local
 toolsets:
 - coding
 tts:
+  provider: edge
   use_gateway: false
 web:
   backend: ddgs

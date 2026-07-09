@@ -8,6 +8,31 @@ distribution:
   license: MIT
   author: hermes-setup
 
+# Hebrew-first voice (Tier 0, free/keyless/local — overrides the base multilingual defaults).
+config:
+  # STT -> ivrit.ai whisper-large-v3-turbo, the SOTA free Hebrew ASR, run locally via Hermes' built-in
+  # `local` faster-whisper provider (faster-whisper accepts a Hugging Face model id, not only a size
+  # name); the base voice-deps setup_steps entry already installs faster-whisper, which downloads this
+  # model on first use. ivrit.ai turbo is Hebrew-ONLY (language detection degraded on purpose), so we
+  # pin language: he.
+  #   - Hybrid Hebrew/English ("Hebrish"): ivrit.ai turbo is the wrong tool (Hebrew-only). For Hebrish,
+  #     revert to the inherited base `stt: {provider: local, local: {model: small}}` on auto-detect, or
+  #     opt into a cloud multilingual provider (Groq/OpenAI) as a Tier-1 upgrade.
+  #   - If a Hermes build rejects a HF model id for the built-in provider, wire an STT command provider
+  #     instead (see docs/research/voice-tts-audio.md §3) or keep the inherited `small` model.
+  stt:
+    provider: local
+    language: he
+    local:
+      model: ivrit-ai/whisper-large-v3-turbo
+  # TTS -> keyless Edge Hebrew voice (he-IL-AvriNeural; he-IL-HilaNeural is the female alternative).
+  # Fully-local alternative: set tts.provider: piper with a Phonikud-trained Hebrew .onnx voice
+  # (Phonikud handles the niqqud/G2P modern Hebrew omits) — see docs/research/voice-tts-audio.md §4.
+  tts:
+    provider: edge
+    edge:
+      voice: he-IL-AvriNeural
+
 soul:
   fragments:
     - he-style.md

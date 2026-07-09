@@ -42,7 +42,8 @@ This tree is a *build output*, not a source of truth.
   - `setup.steps.sh` / `setup.steps.ps1` — generated per-platform local-tool provisioning scripts
     (present iff the persona declares `setup_steps[]`); the apply flow runs the matching one
     (gated, idempotent, failure-tolerant). Generated infrastructure like the meta-skill —
-    distribution-owned, secret-scanned, never hand-edited. `base/general` ships the RTK step.
+    distribution-owned, secret-scanned, never hand-edited. `base/general` ships the RTK step and a
+    Tier-0 `voice-deps` step (ffmpeg + faster-whisper/piper-tts for free voice).
   - `meta-skills/finish-setup/SKILL.md` — the one generated skill (the carve-out), always emitted;
     registered as `/finish-setup`. Distribution-owned; never under `skills/`.
   - `.env.EXAMPLE` — every env var the config references, no secrets.

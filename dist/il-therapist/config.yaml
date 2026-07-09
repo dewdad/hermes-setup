@@ -51,9 +51,17 @@ skills:
   - meta-skills
   - ~/open-skills/skills
   - ~/multi-gws-cli
+stt:
+  language: he
+  local:
+    model: ivrit-ai/whisper-large-v3-turbo
+  provider: local
 toolsets:
 - safe
 tts:
+  edge:
+    voice: he-IL-AvriNeural
+  provider: edge
   use_gateway: false
 web:
   backend: ddgs

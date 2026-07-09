@@ -51,8 +51,11 @@ env-var checks, secret hygiene, and skill security scanning — we never reinven
     that powers the `nous / stepfun/step-3.7-flash:free` fallback; adding any **one** free-tier
     provider key is optional and unlocks the higher-tier free models (with zero keys AND no Portal
     login the chain returns HTTP 403). Plus **genuinely keyless** browser automation + web
-    research/scraping (from `dewdad/open-skills`, no key at all), and the free/keyless/local RTK
-    token-compressor (a `setup_steps[]` local tool). Installed on apply.
+    research/scraping (from `dewdad/open-skills`, no key at all), the free/keyless/local RTK
+    token-compressor (a `setup_steps[]` local tool), and **free voice** — inbound voice-note
+    transcription via local `faster-whisper` (`stt.provider: local`) and spoken replies via keyless
+    `edge` TTS (local Piper/NeuTTS/KittenTTS as offline alternatives), with `ffmpeg` + the STT/TTS
+    deps provisioned by a `setup_steps[]` step. Installed on apply.
     **A working agent depends ONLY on Tier-0 (free) providers, never Tier-1.**
   - **Tier 1 — guided opt-in:** Google Workspace (`multi-gws-cli` — Node build + OAuth) and
     cross-platform messaging (`beeper` — companion app). The apply flow now **provisions** both for
@@ -96,11 +99,15 @@ env-var checks, secret hygiene, and skill security scanning — we never reinven
   a persona lands its skills installed **and** Hermes-security-scanned.
 - **Zero paid Tool Gateway by default (binding)** — `base/general` forces every Nous Tool Gateway
   (Portal) tool off the paid gateway (`web`, `browser`, `image_gen`, `tts` all `use_gateway: false`)
-  and pins `web`/`browser` to free keyless backends (`ddgs` / `local`) so Hermes' "fall back to the
-  gateway when no direct key exists" rule can never route a paid call. The agent's web + browser work
-  is served free by these backends and the keyless `dewdad/open-skills` skills — never the paid
-  gateway. `image_gen`/`tts` ship no free local backend; they stay gateway-off (a direct key is
-  needed only if a user opts in — never a paid-gateway call on the default, subscription-less path).
+  and pins every tool that HAS a free backend to it, so Hermes' "fall back to the gateway when no
+  direct key exists" rule can never route a paid call: `web` → keyless DuckDuckGo (`ddgs`), `browser`
+  → local Chromium (`local`), and **`tts` → free keyless `edge`** (with local Piper/NeuTTS/KittenTTS
+  as offline alternatives). **STT (voice-note transcription) is never a Nous gateway tool at all** —
+  it runs on the free local `faster-whisper` (`stt.provider: local`), so inbound voice is free and
+  subscription-less. Web + browser + voice are all served free — never the paid gateway. **Only
+  `image_gen` ships no free backend**: it stays gateway-off and simply needs a direct key (or the
+  paid gateway) if a user ever opts in — never a paid-gateway call on the default, subscription-less
+  path.
 - **Local-tool provisioning (`setup_steps[]`)** — capabilities that are **not** a `hermes skills
   install` (a standalone binary + a Hermes plugin) are declared as template `setup_steps[]`. The
   compiler generates per-platform `dist/<persona>/setup.steps.{sh,ps1}` (generated infrastructure,

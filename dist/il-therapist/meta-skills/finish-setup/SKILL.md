@@ -82,6 +82,15 @@ the command for your platform (each is idempotent and safe to re-run):
   ```powershell
   $d="$env:USERPROFILE\.local\bin"; New-Item -ItemType Directory -Force -Path $d | Out-Null; if (-not (Get-Command rtk -ErrorAction SilentlyContinue)) { $z="$env:TEMP\rtk.zip"; Invoke-WebRequest -Uri https://github.com/rtk-ai/rtk/releases/latest/download/rtk-x86_64-pc-windows-msvc.zip -OutFile $z; Expand-Archive -Path $z -DestinationPath $d -Force }; $env:PATH="$d;$env:PATH"; rtk init --agent hermes
   ```
+- **Voice (STT/TTS) dependencies** — Local faster-whisper (STT) + piper-tts (TTS) + ffmpeg for Telegram voice bubbles. Free, keyless.
+
+  ```bash
+  python3 -m pip install --user --quiet faster-whisper piper-tts || true; command -v ffmpeg >/dev/null 2>&1 || { command -v brew >/dev/null 2>&1 && brew install ffmpeg; } || echo "note: install ffmpeg (e.g. sudo apt install ffmpeg / sudo dnf install ffmpeg) for Telegram voice bubbles"
+  ```
+
+  ```powershell
+  python -m pip install --quiet faster-whisper piper-tts; if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { try { winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements } catch { Write-Host "note: install ffmpeg manually for Telegram voice bubbles" } }
+  ```
 
 ### open-skills catalogue (Tier 0 — provisioned by default)
 

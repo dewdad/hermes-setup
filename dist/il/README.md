@@ -56,3 +56,4 @@ wire a Hermes plugin. The apply flow (`bootstrap.ps1` / `bootstrap.sh`) runs the
 failure. Each is free-to-run and keyless unless marked Tier 1.
 
 - **RTK (Rust Token Killer)** — Compresses git/cargo/pytest/docker/... output 60-90% before it reaches the model. Free, keyless, local.
+- **Voice (STT/TTS) dependencies** — Local faster-whisper (STT) + piper-tts (TTS) + ffmpeg for Telegram voice bubbles. Free, keyless.

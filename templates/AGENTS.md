@@ -53,7 +53,9 @@ inheritance) the `configurator/` compiler resolves into native Hermes profile di
     `*_run` command runs only when the `*_check` reports the tool not yet set up — and
     failure-tolerant), and `/finish-setup` shows the manual commands. `tier` mirrors `post_install`
     (0 = free/on the apply path; 1 = guided opt-in). Commands carry no secrets (secret-scanned on
-    emit). `base/general` ships the RTK step (Tier 0, free/keyless/local).
+    emit). `base/general` ships the RTK step and a Tier-0 `voice-deps` step (ffmpeg +
+    faster-whisper/piper-tts, enabling free local STT + keyless Edge TTS by default); `locale/il`
+    overrides the voice config to Hebrew (ivrit.ai STT model + a `he-IL` Edge voice).
 - **Merge semantics**:
   - Maps deep-merge child-over-parent; scalars override.
   - Config lists set-union across layers; use `{"!remove": <value>}` markers to drop an inherited

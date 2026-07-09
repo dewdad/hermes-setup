@@ -91,6 +91,20 @@ class ParseValidation(unittest.TestCase):
         self.assertEqual(tpl.skills.bundled, ("github-pr-workflow", "test-driven-development"))
 
 
+class ParsePortalAuth(unittest.TestCase):
+    def test_portal_auth_defaults_false(self) -> None:
+        tpl = parse_template({"name": "general", "kind": "base"})
+        self.assertFalse(tpl.portal_auth)
+
+    def test_portal_auth_true_when_set(self) -> None:
+        tpl = parse_template({"name": "general-pro", "kind": "base", "portal_auth": True, "env": []})
+        self.assertTrue(tpl.portal_auth)
+
+    def test_empty_env_accepted(self) -> None:
+        tpl = parse_template({"name": "general-pro", "kind": "base", "env": []})
+        self.assertEqual(tpl.env, ())
+
+
 class ParseSetupSteps(unittest.TestCase):
     def test_setup_step_fields_parsed(self) -> None:
         tpl = parse_template({

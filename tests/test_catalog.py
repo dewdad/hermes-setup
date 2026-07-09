@@ -78,6 +78,17 @@ class CatalogShape(unittest.TestCase):
         scan_text(first, where=CATALOG_FILENAME)  # must not raise
 
 
+class ApplyModes(unittest.TestCase):
+    def test_free_profile_supports_free_and_pro(self) -> None:
+        entry = build_catalog([_tpl("developer")])["profiles"][0]  # type: ignore[index]
+        self.assertEqual(entry["apply_modes"], ["free", "pro"])
+
+    def test_portal_base_is_pro_only(self) -> None:
+        tpl = parse_template({"name": "general-pro", "kind": "base", "portal_auth": True})  # type: ignore[arg-type]
+        entry = build_catalog([tpl])["profiles"][0]  # type: ignore[index]
+        self.assertEqual(entry["apply_modes"], ["pro"])
+
+
 class CatalogGolden(unittest.TestCase):
     def test_committed_catalog_matches_fresh(self) -> None:
         templates_root = REPO_ROOT / "templates"

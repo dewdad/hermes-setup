@@ -33,7 +33,9 @@ This tree is a *build output*, not a source of truth.
 - **Distribution layout** (per persona) — the compiler emits:
   - `distribution.yaml` — flat Hermes distribution manifest.
   - `config.yaml` — Hermes config fragment (uses `${VAR}` / `key_env`; never literal secrets;
-    no `_config_version` from templates — compiler stamps `33`).
+    no `_config_version` from templates — compiler stamps `33`). The paid `dist/general-pro/` variant
+    sets `model.provider: nous` + the four Tool Gateway tools `use_gateway: true` (the only base
+    allowed to); its credential is the Portal OAuth token, not a key, so it declares no `env`.
   - `SOUL.md` — composed SOUL (≤ 20000 chars).
   - `cron/` — scheduled task definitions.
   - `skill-bundles/` — declared bundles (skill *names* only, no content).
@@ -46,7 +48,8 @@ This tree is a *build output*, not a source of truth.
     Tier-0 `voice-deps` step (ffmpeg + faster-whisper/piper-tts for free voice).
   - `meta-skills/finish-setup/SKILL.md` — the one generated skill (the carve-out), always emitted;
     registered as `/finish-setup`. Distribution-owned; never under `skills/`.
-  - `.env.EXAMPLE` — every env var the config references, no secrets.
+  - `.env.EXAMPLE` — every env var the config references, no secrets (absent when the template
+    declares no `env`, e.g. the OAuth-only `general-pro` base).
   - `.gitignore` — keeps runtime state out of git.
   - `README.md` — per-distribution readme with the auto-installed referenced-skill block.
   - `.no-bundled-skills` — present iff the persona sets `skills.bundled: none`.

@@ -165,6 +165,7 @@ def _merge_templates(parent: Template, child: Template) -> Template:
         post_install=_merge_post_install(parent.post_install, child.post_install, excluded),
         discovery=_merge_discovery(parent.discovery, child.discovery),
         setup_steps=_merge_setup_steps(parent.setup_steps, child.setup_steps, excluded),
+        portal_auth=parent.portal_auth or child.portal_auth,
         source_dir=child.source_dir,
     )
 

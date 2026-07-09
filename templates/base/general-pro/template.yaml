@@ -1,0 +1,115 @@
+name: general-pro
+kind: base
+
+distribution:
+  description: >-
+    General-purpose Hermes agent on a paid Nous Portal subscription — frontier agentic models plus
+    the Nous Tool Gateway (web/image/TTS/browser), one OAuth login, zero per-tool API keys.
+  version: 1.0.0
+  license: MIT
+  author: hermes-setup
+
+# Paid Portal rail (the opt-in sibling of base/general). Mirrors exactly what `hermes setup --portal`
+# writes: model.provider: nous + the Portal inference base_url + the Tool Gateway on for every tool.
+# This is the ONE sanctioned carve-out from the "zero paid Tool Gateway by default" rule — it is
+# never the default and no free persona inherits it. The credential is the Portal OAuth refresh token
+# at ~/.hermes/auth.json (established by `hermes setup --portal`), NOT an env key — so env is empty.
+config:
+  model:
+    provider: nous
+    # Frontier AGENTIC default. NOT a Hermes-4 model: Nous' own guidance is that Hermes-4-70B/405B
+    # are chat/reasoning-tuned and struggle at the agent tool-call loop — pick a frontier agentic
+    # model for agent work. Switch any time in-session with /model.
+    default: anthropic/claude-sonnet-4.6
+    base_url: https://inference-api.nousresearch.com/v1
+    max_tokens: 128000
+  # Quality-first fallbacks within the Portal catalog, ending in the guaranteed-free floor so the
+  # agent still answers if the paid subscription lapses.
+  fallback_providers:
+    - provider: nous
+      model: openai/gpt-5.5-pro
+    - provider: nous
+      model: stepfun/step-3.7-flash:free
+  delegation:
+    provider: nous
+    model: anthropic/claude-haiku-4.5
+    reasoning_effort: high
+    max_concurrent_children: 3
+    max_spawn_depth: 2
+    orchestrator_enabled: true
+    inherit_mcp_toolsets: true
+  agent:
+    verify_on_stop: false
+  # Embrace the Nous Tool Gateway — the whole point of this base. Each tool is pinned to the `nous`
+  # backend with use_gateway on, exactly as `hermes setup --portal` configures it:
+  #   web -> Firecrawl · browser -> Browser Use · image_gen -> FAL · tts -> OpenAI TTS.
+  web:
+    backend: nous
+    use_gateway: true
+  browser:
+    backend: nous
+    use_gateway: true
+  image_gen:
+    provider: nous
+    use_gateway: true
+  tts:
+    provider: nous
+    use_gateway: true
+  auxiliary:
+    vision:
+      provider: nous
+      model: google/gemini-3-flash-preview
+      base_url: https://inference-api.nousresearch.com/v1
+  display:
+    tool_progress: all
+  security:
+    redact_secrets: true
+
+# No provider key: the credential is the Portal OAuth token, established by `hermes setup --portal`.
+env: []
+
+# finish-setup renders the Portal OAuth login step (paid) instead of the provider-key walkthrough.
+portal_auth: true
+
+soul:
+  fragments:
+    - identity.md
+    - style.md
+    - skills.md
+    - safety.md
+
+# Reference-only: this repo authors no skills. The gateway serves web/image/TTS/browser, so the
+# keyless open-skills web/browser skills are dropped here (superseded). The ~/open-skills checkout is
+# kept as a harmless bonus catalogue (silently skipped if absent); ~/multi-gws-cli stays the Tier-1
+# Google Workspace clone. The compiler prepends the profile-relative meta-skills dir (finish-setup).
+skills:
+  bundled: none
+  external_dirs:
+    - ~/open-skills/skills
+    - ~/multi-gws-cli
+
+# Bucket 3 (auto-installed by the apply flow). Tier 1 = guided opt-in (needs a companion app).
+post_install:
+  - id: skills-sh/dewdad/beeper-desktop-api-skill/beeper-desktop-api
+    note: Cross-platform messaging (WhatsApp/iMessage/Telegram/…). Needs the free Beeper Desktop app.
+    tier: 1
+
+# Discovery layer surfaced in /finish-setup. URLs only — no secrets.
+discovery:
+  - label: Nous Portal
+    url: https://portal.nousresearch.com
+    note: Your subscription — models, Tool Gateway routing, usage, and billing.
+  - label: Skills Hub (skills.sh)
+    url: https://skills.sh
+    note: Browse the community + official skill registries Hermes installs from.
+
+# Local tools provisioned for every user (same as base/general). RTK is free/keyless/local Tier 0.
+setup_steps:
+  - id: rtk
+    label: RTK (Rust Token Killer)
+    tier: 0
+    note: Compresses git/cargo/pytest/docker/... output 60-90% before it reaches the model. Free, keyless, local.
+    posix_check: 'test -d "${HERMES_HOME:-$HOME/.hermes}/plugins/rtk-rewrite"'
+    posix_run: 'command -v rtk >/dev/null 2>&1 || curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh; PATH="$HOME/.local/bin:$PATH" rtk init --agent hermes'
+    windows_check: 'Test-Path (Join-Path $env:HERMES_HOME ''plugins\rtk-rewrite'')'
+    windows_run: '$d="$env:USERPROFILE\.local\bin"; New-Item -ItemType Directory -Force -Path $d | Out-Null; if (-not (Get-Command rtk -ErrorAction SilentlyContinue)) { $z="$env:TEMP\rtk.zip"; Invoke-WebRequest -Uri https://github.com/rtk-ai/rtk/releases/latest/download/rtk-x86_64-pc-windows-msvc.zip -OutFile $z; Expand-Archive -Path $z -DestinationPath $d -Force }; $env:PATH="$d;$env:PATH"; rtk init --agent hermes'

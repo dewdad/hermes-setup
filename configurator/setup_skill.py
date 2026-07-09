@@ -64,6 +64,33 @@ def _key_lines(env: tuple[EnvVar, ...]) -> list[str]:
     return lines
 
 
+def _portal_auth_lines() -> list[str]:
+    """Portal-base auth: one OAuth login instead of provider keys (paid subscription required)."""
+    return [
+        "This profile is powered by a **paid Nous Portal subscription** — frontier agentic models",
+        "plus the Nous Tool Gateway (web search, image generation, TTS, browser automation) through",
+        "one OAuth login, with no per-tool API keys. It requires a **paid** Portal plan (the free",
+        "plan runs free models only). Full checklist: PREREQUISITES.md in the hermes-setup repo.",
+        "",
+        "1. Subscribe to a paid plan at https://portal.nousresearch.com/manage-subscription.",
+        "2. Log in and wire the provider + Tool Gateway in one step:",
+        "",
+        "```bash",
+        "hermes setup --portal",
+        "```",
+        "",
+        "This sets Nous as your inference provider, turns on the Tool Gateway, and stores an OAuth",
+        "refresh token at `~/.hermes/auth.json` (no keys in `.env`). Verify with `hermes portal info`.",
+    ]
+
+
+def _auth_section(template: Template) -> list[str]:
+    """Section 1 of finish-setup: Portal OAuth login (portal_auth bases) or provider keys (free)."""
+    if template.portal_auth:
+        return ["### 1. Nous Portal login (required)", "", *_portal_auth_lines()]
+    return ["### 1. Provider keys (optional)", "", *_key_lines(template.env)]
+
+
 def _install_line(ref: PostInstallRef) -> str:
     verb = "hermes skills tap add" if ref.is_tap else "hermes skills install"
     suffix = f" — {ref.note}" if ref.note else ""
@@ -181,12 +208,23 @@ def _discover_lines(discovery: tuple[DiscoveryRef, ...]) -> list[str]:
 
 def build_finish_setup_skill(template: Template) -> str:
     """Render the full ``finish-setup`` SKILL.md (frontmatter + body) for a resolved template."""
+    intro = (
+        [
+            "Complete this profile: log in to your paid Nous Portal subscription, install its",
+            "referenced skills, enable any Tier-1 extras you want, then health-check. The Portal",
+            "login is required — it powers both the models and the Tool Gateway.",
+        ]
+        if template.portal_auth
+        else [
+            "Complete this profile: add an optional provider key, install its referenced skills, enable",
+            "any Tier-1 extras you want, then health-check. Everything here is optional polish — the",
+            "agent already works for free out of the box.",
+        ]
+    )
     body: list[str] = [
         "# Finish setup",
         "",
-        "Complete this profile: add an optional provider key, install its referenced skills, enable",
-        "any Tier-1 extras you want, then health-check. Everything here is optional polish — the",
-        "agent already works for free out of the box.",
+        *intro,
         "",
         "## When to Use",
         "",
@@ -195,9 +233,7 @@ def build_finish_setup_skill(template: Template) -> str:
         "",
         "## Procedure",
         "",
-        "### 1. Provider keys (optional)",
-        "",
-        *_key_lines(template.env),
+        *_auth_section(template),
         "",
         "### 2. Referenced skills",
         "",

@@ -17,18 +17,21 @@ set -euo pipefail
 
 TEMPLATE="base/general"
 HERMES_HOME_ARG=""
-DRY_RUN=0; FORCE=0; SKIP_BACKUP=0; SKIP_SKILLS=0; SKIP_OPEN_SKILLS=0; SKIP_GWS=0; SKIP_SKILLS_INSTALL=0; SKIP_SETUP_STEPS=0; ASSUME_YES=0
+DRY_RUN=0; FORCE=0; SKIP_BACKUP=0; SKIP_SKILLS=0; SKIP_OPEN_SKILLS=0; SKIP_GWS=0; SKIP_SKILLS_INSTALL=0; SKIP_SETUP_STEPS=0; ASSUME_YES=0; PORTAL=0
 
 usage() {
   cat <<'EOF'
 Usage: ./bootstrap.sh [--template REF|NAME] [--hermes-home PATH]
                       [--dry-run] [--force] [--skip-backup] [--skip-skills] [--skip-open-skills]
-                      [--skip-gws] [--skip-skills-install] [--skip-setup-steps] [--yes]
-  --template            Distribution to apply (ref "persona/developer" or name "developer"). Default base/general.
-  --skip-gws            Do not provision (clone + npm build) the free Google Workspace CLI at ~/multi-gws-cli.
-  --skip-skills-install Do not auto-install the distribution's referenced skills.
-  --skip-setup-steps    Do not run the distribution's local-tool setup steps (e.g. RTK).
-  --yes                 Auto-confirm the referenced-skill install AND setup-step prompts (non-interactive).
+                      [--skip-gws] [--skip-skills-install] [--skip-setup-steps] [--portal] [--yes]
+   --template            Distribution to apply (ref "persona/developer" or name "developer"). Default base/general.
+   --skip-gws            Do not provision (clone + npm build) the free Google Workspace CLI at ~/multi-gws-cli.
+   --skip-skills-install Do not auto-install the distribution's referenced skills.
+   --skip-setup-steps    Do not run the distribution's local-tool setup steps (e.g. RTK).
+   --portal              After applying, splice the PAID Nous Portal base (Nous provider + Tool Gateway)
+                         onto this profile and run the Portal OAuth login. Needs a paid Portal plan and
+                         the general-pro base compiled (dist/general-pro/). Free chain is the default.
+   --yes                 Auto-confirm the referenced-skill install AND setup-step prompts (non-interactive).
 EOF
 }
 
@@ -44,6 +47,7 @@ while [ $# -gt 0 ]; do
     --skip-gws) SKIP_GWS=1; shift;;
     --skip-skills-install) SKIP_SKILLS_INSTALL=1; shift;;
     --skip-setup-steps) SKIP_SETUP_STEPS=1; shift;;
+    --portal) PORTAL=1; shift;;
     --yes) ASSUME_YES=1; shift;;
     -h|--help) usage; exit 0;;
     *) echo "unknown option: $1" >&2; usage; exit 2;;
@@ -162,6 +166,51 @@ elif [ ! -f "$DST_ENV" ]; then
 else
   missing="$(comm -23 <(env_keys "$ENV_EXAMPLE" | sort -u) <(env_keys "$DST_ENV" | sort -u) || true)"
   if [ -n "$missing" ]; then warn "existing .env preserved. Template keys not present:"; echo "$missing" | sed 's/^/    /'; else ok "existing .env preserved; all template keys present"; fi
+fi
+
+step "Paid Nous Portal base (--portal)"
+if [ "$PORTAL" = 0 ]; then skip "not requested (free chain is the default)"
+else
+  PORTAL_CFG="$REPO_ROOT/dist/general-pro/config.yaml"
+  if [ ! -f "$PORTAL_CFG" ]; then
+    echo "--portal needs the general-pro base compiled, but $PORTAL_CFG is missing." >&2
+    echo "Compile it first:  python -m configurator compile general-pro" >&2
+    exit 4
+  fi
+  # Base-layer key/value pairs mirror templates/base/general-pro/template.yaml (its compiled
+  # dist/general-pro/config.yaml above is the canonical declaration + the "is it compiled?" gate).
+  PORTAL_PAIRS="model.provider=nous
+model.default=anthropic/claude-sonnet-4.6
+model.base_url=https://inference-api.nousresearch.com/v1
+model.max_tokens=128000
+web.backend=nous
+web.use_gateway=true
+browser.backend=nous
+browser.use_gateway=true
+image_gen.provider=nous
+image_gen.use_gateway=true
+tts.provider=nous
+tts.use_gateway=true
+delegation.provider=nous
+delegation.model=anthropic/claude-haiku-4.5
+auxiliary.vision.provider=nous
+auxiliary.vision.model=google/gemini-3-flash-preview
+auxiliary.vision.base_url=https://inference-api.nousresearch.com/v1"
+  if [ "$DRY_RUN" = 1 ]; then
+    info "[dry-run] would 'hermes config set' the Nous Portal base-layer keys, then 'hermes auth add nous':"
+    printf '%s\n' "$PORTAL_PAIRS" | sed 's/^/      /'
+  elif [ -z "$HERMES_CLI" ]; then warn "hermes CLI not found — cannot apply the Portal base (set the keys manually later)"
+  else
+    info "applying the PAID Nous Portal base-layer (requires a paid Portal subscription)"
+    while IFS='=' read -r key val; do
+      [ -n "$key" ] || continue
+      "$HERMES_CLI" config set "$key" "$val" >/dev/null 2>&1 && ok "set $key" || warn "set $key failed (set it manually)"
+    done <<EOF_PAIRS
+$PORTAL_PAIRS
+EOF_PAIRS
+    "$HERMES_CLI" auth add nous || warn "Portal login not completed — run 'hermes auth add nous' when a browser is available"
+    info "Portal base applied. Verify with: hermes portal info"
+  fi
 fi
 
 # Parse skills.install.json (deterministic sorted keys: id, note, tap) without a jq dependency.

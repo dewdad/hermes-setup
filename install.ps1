@@ -22,6 +22,11 @@
 .PARAMETER Yes
   Pass --yes to `hermes profile install` (no confirmation prompt).
 
+.PARAMETER Pro
+  After install, apply the PAID Nous Portal base-layer config (Nous provider + Tool Gateway) to the
+  profile via `hermes config set`, then run the Portal OAuth login. Requires a PAID Nous Portal
+  subscription and the general-pro base compiled (dist/general-pro/). The free chain is the default.
+
 .PARAMETER Repo
   Clone this repo URL when run standalone (or set $env:HERMES_SETUP_REPO).
 
@@ -29,6 +34,8 @@
   .\install.ps1 -List
 .EXAMPLE
   .\install.ps1 il-legal -Name my-legal -Yes
+.EXAMPLE
+  .\install.ps1 developer -Pro -Yes
 #>
 [CmdletBinding()]
 param(
@@ -36,6 +43,7 @@ param(
   [switch]$List,
   [string]$Name,
   [switch]$Yes,
+  [switch]$Pro,
   [string]$Repo
 )
 
@@ -80,6 +88,45 @@ function Get-Profiles($repoRoot) {
 
 function Show-Profiles($profiles) {
   foreach ($p in $profiles) { '  {0,-14} {1}' -f $p.Name, $p.Description | Write-Host }
+}
+
+# Splice the paid Nous Portal base-layer config onto an already-installed profile, then OAuth-login.
+# The base-layer key/value pairs mirror templates/base/general-pro/template.yaml (its compiled
+# dist/general-pro/config.yaml is the canonical declaration + the "is the base compiled?" gate).
+function Invoke-PortalSplice($repoRoot, $hermes, $profileName) {
+  $cfg = Join-Path $repoRoot 'dist\general-pro\config.yaml'
+  if (-not (Test-Path -LiteralPath $cfg)) {
+    Write-Error "Paid Portal mode (-Pro) needs the general-pro base compiled, but $cfg is missing. Compile it first:  python -m configurator compile general-pro"
+  }
+  Write-Host ''
+  Write-Host "Applying the PAID Nous Portal base to '$profileName' (requires a paid Portal subscription) ..."
+  $pairs = [ordered]@{
+    'model.provider'          = 'nous'
+    'model.default'           = 'anthropic/claude-sonnet-4.6'
+    'model.base_url'          = 'https://inference-api.nousresearch.com/v1'
+    'model.max_tokens'        = '128000'
+    'web.backend'             = 'nous'
+    'web.use_gateway'         = 'true'
+    'browser.backend'         = 'nous'
+    'browser.use_gateway'     = 'true'
+    'image_gen.provider'      = 'nous'
+    'image_gen.use_gateway'   = 'true'
+    'tts.provider'            = 'nous'
+    'tts.use_gateway'         = 'true'
+    'delegation.provider'     = 'nous'
+    'delegation.model'        = 'anthropic/claude-haiku-4.5'
+    'auxiliary.vision.provider' = 'nous'
+    'auxiliary.vision.model'  = 'google/gemini-3-flash-preview'
+    'auxiliary.vision.base_url' = 'https://inference-api.nousresearch.com/v1'
+  }
+  foreach ($key in $pairs.Keys) {
+    & $hermes -p $profileName config set $key $pairs[$key] 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "  warning: 'hermes -p $profileName config set $key' failed — set it manually." }
+  }
+  Write-Host 'Logging in to Nous Portal (OAuth) ...'
+  & $hermes auth add nous
+  if ($LASTEXITCODE -ne 0) { Write-Host "  Portal login not completed. Run 'hermes auth add nous' when a browser is available." }
+  Write-Host "Paid Portal base applied. Verify with:  hermes -p $profileName portal info"
 }
 
 $RepoRoot = Resolve-RepoRoot
@@ -128,6 +175,8 @@ Write-Host "Installing '$Persona' as Hermes profile '$profileName' from $src ...
 if ($Yes) { & $hermes profile install $src --name $profileName --yes }
 else { & $hermes profile install $src --name $profileName }
 if ($LASTEXITCODE -ne 0) { Write-Host "hermes profile install failed (exit $LASTEXITCODE)."; exit $LASTEXITCODE }
+
+if ($Pro) { Invoke-PortalSplice $RepoRoot $hermes $profileName }
 
 Write-Host ''
 Write-Host 'Installed. Finish setup:'

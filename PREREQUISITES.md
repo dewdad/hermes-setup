@@ -61,6 +61,12 @@ key.
    > A credit card is collected at registration (Stripe verification). The Free plan is **not
    > charged** and has **no per-call cost** — it runs free models only. Upgrading to a paid plan is
    > entirely optional and never required by this repo.
+   >
+   > **Paid Portal mode (`general-pro` / `--pro` / `--portal`) needs a PAID plan.** The optional
+   > `base/general-pro` distribution and the `install.sh --pro` / `bootstrap.sh --portal` apply modes
+   > route models **and** the Nous Tool Gateway (web/image/TTS/browser) through your subscription, so
+   > they require a **paid** Nous Portal plan (the free plan runs free models only). This is never on
+   > the default free path — plain `general` and every persona work fully on the Free plan.
 
 2. **Log in from Hermes.** This links your Portal account to the local agent:
 

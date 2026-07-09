@@ -60,6 +60,22 @@ class EnvTable(unittest.TestCase):
         self.assertIn("no provider keys", text.lower())
 
 
+class PortalAuth(unittest.TestCase):
+    def test_portal_base_renders_oauth_login_not_keys(self) -> None:
+        tpl = _tpl(portal_auth=True, env=[])
+        text = build_finish_setup_skill(tpl)  # type: ignore[arg-type]
+        self.assertIn("### 1. Nous Portal login (required)", text)
+        self.assertIn("paid Nous Portal subscription", text)
+        self.assertIn("hermes setup --portal", text)
+        self.assertNotIn("### 1. Provider keys (optional)", text)
+
+    def test_free_base_renders_provider_keys_not_portal_login(self) -> None:
+        tpl = _tpl(env=[{"name": "ZENMUX_API_KEY", "description": "primary"}])
+        text = build_finish_setup_skill(tpl)  # type: ignore[arg-type]
+        self.assertIn("### 1. Provider keys (optional)", text)
+        self.assertNotIn("### 1. Nous Portal login (required)", text)
+
+
 class TieredSkillList(unittest.TestCase):
     def _text(self) -> str:
         tpl = _tpl(post_install=[

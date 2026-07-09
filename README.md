@@ -52,6 +52,35 @@ standalone Hermes profile you install in one step and use for free.
 > agent depends only on Tier-0 (free) providers. *Tier 1* (Google Workspace via `multi-gws-cli`,
 > messaging via `beeper`) is a guided opt-in through `/finish-setup` and is never required.
 
+### Free (default) or paid Nous Portal — your choice per install
+
+The free chain above is the default for **every** persona. If you have a **paid
+[Nous Portal](https://portal.nousresearch.com) subscription**, you can instead run any persona on the
+Portal — frontier agentic models plus the Nous Tool Gateway (web, image, TTS, browser) through one
+OAuth login, no per-tool API keys. Two ways:
+
+- **Any persona, in paid mode** — add `--pro` (named-profile install) or `--portal` (bootstrap):
+
+  ```bash
+  ./install.sh developer --pro --yes         # POSIX;  installs developer, then applies the Portal base
+  .\install.ps1 developer -Pro -Yes          # Windows
+  ./bootstrap.sh --template developer --portal   # apply to the default profile in paid mode
+  ```
+
+  This installs the persona's free distribution, then splices the Nous Portal base-layer config onto
+  it (`hermes config set`) and runs the Portal OAuth login (`hermes auth add nous`). Or, from inside
+  the agent, run `/finish-setup` and follow its **"Upgrade to Nous Portal"** step (`hermes setup
+  --portal`).
+
+- **A plain Portal general agent** — install the `general-pro` base directly:
+
+  ```bash
+  hermes profile install ./dist/general-pro --name general-pro
+  ```
+
+> Paid mode requires a **paid** Nous Portal plan (the free plan runs free models only). See
+> [`PREREQUISITES.md`](PREREQUISITES.md).
+
 Everything below is the **contributor** workflow for authoring and compiling personas.
 
 ---
@@ -378,6 +407,24 @@ python -m configurator ingest --profile my-general
 - **Vision aux:** `gemini/gemini-3.1-flash` with a nous free fallback
 
 Four independent providers, every provider key `required: false` — **any one key yields a working agent** with no per-call paid services on the default path.
+
+## `base/general-pro` — the paid Nous Portal chain (opt-in)
+
+`base/general-pro` is the **paid** sibling rail — never the default, never inherited by a free
+persona. It mirrors exactly what `hermes setup --portal` writes:
+
+- **Inference:** `model.provider: nous` on `https://inference-api.nousresearch.com/v1`, default
+  `anthropic/claude-sonnet-4.6` (a frontier *agentic* model — deliberately **not** Hermes-4, which is
+  chat/reasoning-tuned), with a `nous / stepfun/step-3.7-flash:free` free floor.
+- **Nous Tool Gateway on (`use_gateway: true`):** `web` (Firecrawl) · `browser` (Browser Use) ·
+  `image_gen` (FAL) · `tts` (OpenAI TTS) — this is the one base allowed to route through the paid
+  gateway.
+- **Credential:** the Portal OAuth token (`hermes setup --portal` → `~/.hermes/auth.json`), not an
+  API key — so it declares `env: []` and its `/finish-setup` walks the OAuth login instead of keys.
+
+Use it standalone (`hermes profile install ./dist/general-pro --name general-pro`) or apply any
+persona in paid mode with `--pro` / `--portal` (see *Free or paid* above). Requires a **paid** Nous
+Portal plan.
 
 ---
 

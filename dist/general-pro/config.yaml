@@ -1,0 +1,47 @@
+_config_version: 33
+agent:
+  verify_on_stop: false
+auxiliary:
+  vision:
+    base_url: https://inference-api.nousresearch.com/v1
+    model: google/gemini-3-flash-preview
+    provider: nous
+browser:
+  backend: nous
+  use_gateway: true
+delegation:
+  inherit_mcp_toolsets: true
+  max_concurrent_children: 3
+  max_spawn_depth: 2
+  model: anthropic/claude-haiku-4.5
+  orchestrator_enabled: true
+  provider: nous
+  reasoning_effort: high
+display:
+  tool_progress: all
+fallback_providers:
+- model: openai/gpt-5.5-pro
+  provider: nous
+- model: stepfun/step-3.7-flash:free
+  provider: nous
+image_gen:
+  provider: nous
+  use_gateway: true
+model:
+  base_url: https://inference-api.nousresearch.com/v1
+  default: anthropic/claude-sonnet-4.6
+  max_tokens: 128000
+  provider: nous
+security:
+  redact_secrets: true
+skills:
+  external_dirs:
+  - meta-skills
+  - ~/open-skills/skills
+  - ~/multi-gws-cli
+tts:
+  provider: nous
+  use_gateway: true
+web:
+  backend: nous
+  use_gateway: true

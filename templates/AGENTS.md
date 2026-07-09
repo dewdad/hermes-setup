@@ -56,6 +56,20 @@ inheritance) the `configurator/` compiler resolves into native Hermes profile di
     emit). `base/general` ships the RTK step and a Tier-0 `voice-deps` step (ffmpeg +
     faster-whisper/piper-tts, enabling free local STT + keyless Edge TTS by default); `locale/il`
     overrides the voice config to Hebrew (ivrit.ai STT model + a `he-IL` Edge voice).
+  - `portal_auth` (bool, default `false`) — marks a base as **paid Nous Portal** (`base/general-pro`
+    only). When true, the generated `/finish-setup` renders the `hermes setup --portal` OAuth login
+    step instead of the provider-key walkthrough, because the credential is the Portal OAuth token
+    (`~/.hermes/auth.json`), not a `${VAR}` key. A portal base therefore carries `env: []` (an empty
+    env list is valid). It merges by OR (once any layer sets it, it stays true), so a persona that
+    `extends: base/general-pro` inherits it.
+- **The two base rails** (root contract) — `base/general` is the free default; `base/general-pro` is
+  the paid Portal sibling. `general-pro` intentionally sets `use_gateway: true` for
+  `web`/`browser`/`image_gen`/`tts` and `model.provider: nous` — the one base allowed to. Personas
+  are **never** re-parented onto it; the free↔paid choice is made at apply time (`bootstrap --portal`
+  / `install --pro`), which splices the base-layer keys (`model.{provider,default,base_url,max_tokens}`,
+  the four gateway tools, `delegation.{provider,model}`, `auxiliary.vision.*`) from
+  `dist/general-pro/config.yaml` onto the target profile via `hermes config set`. Keep that
+  base-layer key set in sync between the template and the apply scripts.
 - **Merge semantics**:
   - Maps deep-merge child-over-parent; scalars override.
   - Config lists set-union across layers; use `{"!remove": <value>}` markers to drop an inherited

@@ -177,4 +177,5 @@ class Template:
     post_install: tuple[PostInstallRef, ...] = ()
     discovery: tuple[DiscoveryRef, ...] = ()
     setup_steps: tuple[SetupStep, ...] = ()
+    portal_auth: bool = False
     source_dir: Path | None = None

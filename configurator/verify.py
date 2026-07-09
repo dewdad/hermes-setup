@@ -27,7 +27,7 @@ _KNOWN_ROOT_KEYS = frozenset({
     "credential_pool_strategies", "toolsets", "agent", "terminal", "display", "compression",
     "delegation", "auxiliary", "moa", "custom_providers", "context", "memory", "gateway",
     "sessions", "streaming", "updates", "mcp_servers", "web", "browser", "skills", "security",
-    "platforms", "plugins",
+    "platforms", "plugins", "image_gen", "tts", "stt",
 })
 # A DOX child must not permit committing secrets (would weaken the root HARD rule).
 _WEAKENING = re.compile(r"(?i)(commit|include|store|keep)[^\n]{0,40}\.env\b|secrets?[^\n]{0,20}(are|is)[^\n]{0,10}(ok|fine|allowed)")

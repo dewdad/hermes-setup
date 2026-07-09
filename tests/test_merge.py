@@ -173,6 +173,20 @@ class SetupStepsMerge(unittest.TestCase):
         self.assertEqual([s.id for s in merged.setup_steps], [])
 
 
+class PortalAuthMerge(unittest.TestCase):
+    def test_portal_auth_inherited_from_base(self) -> None:
+        base = _tpl("general-pro", "base", None, portal_auth=True)
+        child = _tpl("dev-pro", "persona", "base/general-pro")
+        merged = resolve(child, lambda _ref: base)
+        self.assertTrue(merged.portal_auth)
+
+    def test_portal_auth_false_when_no_layer_sets_it(self) -> None:
+        base = _tpl("general", "base", None)
+        child = _tpl("dev", "persona", "base/general")
+        merged = resolve(child, lambda _ref: base)
+        self.assertFalse(merged.portal_auth)
+
+
 class ResolveGuards(unittest.TestCase):
     def test_cycle_detected(self) -> None:
         a = _tpl("a", "persona", "p/b")

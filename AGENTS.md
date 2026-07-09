@@ -43,6 +43,22 @@ env-var checks, secret hygiene, and skill security scanning — we never reinven
   free**, then optionally polish it. `hermes-setup` is a **contributor tool**; the layman never runs
   Python (see the layman/Desktop path below). Curated skills stay **free-to-run and local** (no
   per-call paid services on the default path).
+- **Two base rails (binding)** — there are exactly two base templates, and **free is always the
+  default**:
+  - `base/general` — the **free** rail (Tier 0), the bootstrap default, the catalogue-recommended
+    base, and the rail every locale/persona compiles against. Every free-path contract below binds
+    it and everything that inherits it.
+  - `base/general-pro` — an **explicitly-labeled, paid, opt-in** sibling rail powered by a **paid
+    Nous Portal subscription** (frontier agentic models + the Nous Tool Gateway; `model.provider:
+    nous`, gateway on, OAuth credential — no `${VAR}` key, so `env: []` and a `portal_auth: true`
+    template flag drives `/finish-setup`'s login step). It is **never the default**, no free persona
+    inherits it, and it is the **one sanctioned place** `use_gateway: true` / paid routing is allowed
+    (see the gateway rule below). A **persona is never re-parented** to it; instead the free↔paid
+    choice is made **at apply time** — `bootstrap.*`/`install.*` gain a `--portal`/`-Portal` (bootstrap)
+    or `--pro`/`-Pro` (install) flag that, after applying a persona's free dist, splices
+    `dist/general-pro/config.yaml`'s base-layer keys onto the profile via `hermes config set` and runs
+    `hermes auth add nous`. `/finish-setup` offers the same upgrade via the all-in-one `hermes setup
+    --portal`. `general-pro` is also installable standalone as a plain Portal agent.
 - **Capability tiers (binding)** — capabilities are split by auth friction so the free path stays
   cheap and simple:
   - **Tier 0 — free-to-run, on by default:** free chat on the default model chain — **no per-call
@@ -97,7 +113,10 @@ env-var checks, secret hygiene, and skill security scanning — we never reinven
   (`bootstrap.ps1`/`bootstrap.sh`) auto-runs `hermes skills install <id>` / `hermes skills tap add
   <tap>` for each, gated by the user's confirmation and tolerant of individual failures, so applying
   a persona lands its skills installed **and** Hermes-security-scanned.
-- **Zero paid Tool Gateway by default (binding)** — `base/general` forces every Nous Tool Gateway
+- **Zero paid Tool Gateway by default (binding)** — this rule binds `base/general` and the free path;
+  the paid `base/general-pro` rail is the **one sanctioned carve-out** (it deliberately sets
+  `use_gateway: true` for `web`/`browser`/`image_gen`/`tts` and routes them through the Portal —
+  never the default). On the free rail, `base/general` forces every Nous Tool Gateway
   (Portal) tool off the paid gateway (`web`, `browser`, `image_gen`, `tts` all `use_gateway: false`)
   and pins every tool that HAS a free backend to it, so Hermes' "fall back to the gateway when no
   direct key exists" rule can never route a paid call: `web` → keyless DuckDuckGo (`ddgs`), `browser`

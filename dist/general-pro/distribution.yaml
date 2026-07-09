@@ -1,0 +1,17 @@
+author: hermes-setup
+description: General-purpose Hermes agent on a paid Nous Portal subscription — frontier agentic models plus the Nous Tool Gateway (web/image/TTS/browser), one OAuth login, zero per-tool API keys.
+distribution_owned:
+- README.md
+- SOUL.md
+- config.yaml
+- cron
+- distribution.yaml
+- mcp.json
+- meta-skills
+- setup.steps.ps1
+- setup.steps.sh
+- skills.install.json
+hermes_requires: '>=0.18.0'
+license: MIT
+name: general-pro
+version: 1.0.0

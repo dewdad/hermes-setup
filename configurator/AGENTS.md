@@ -33,7 +33,9 @@ distributions under `dist/<persona>/`. Pure library + CLI; no installer behavior
   - `readme.py` — per-distribution README (includes the `hermes skills install …` post-install block).
   - `setup_skill.py` — build the generated `finish-setup` meta-skill body (the reference-only
     carve-out): tiered skill list, provider-key guidance, `setup_steps[]` local-tools block,
-    `discovery[]` block. Pure function.
+    `discovery[]` block. Pure function. When the template's `portal_auth` is set (paid
+    `base/general-pro`), section 1 renders the `hermes setup --portal` OAuth login instead of the
+    provider-key walkthrough.
   - `setup_scripts.py` — build the generated per-platform `setup.steps.{sh,ps1}` from `setup_steps[]`
     (local-tool provisioning, e.g. RTK). Pure functions; POSIX/PowerShell single-quote escaping;
     each step is idempotent (check-gated) + failure-tolerant. Emitted text is secret-scanned.
@@ -46,8 +48,10 @@ distributions under `dist/<persona>/`. Pure library + CLI; no installer behavior
   - `sources.py` + `fetch.py` + `locks.py` — vendoring + lockfile IO.
   - `ingest.py` — drift detection from live `config.yaml`.
   - `catalog.py` — build the repo-root `profiles.json` catalogue: every installable profile's
-    name / description / version / `dist/<name>` path + ready-to-run `install_command`, plus an
-    `agent_instructions` recipe. Pure function; embeds NO repo URL (deterministic across forks).
+    name / description / version / `apply_modes` / `dist/<name>` path + ready-to-run
+    `install_command`, plus an `agent_instructions` recipe. `apply_modes` is `["pro"]` for a
+    `portal_auth` base and `["free","pro"]` otherwise (free default, paid Portal via the `--pro` /
+    `--portal` apply flag). Pure function; embeds NO repo URL (deterministic across forks).
   - `verify.py` — aggregate quality gates (also secret-scans the repo-root `profiles.json`).
   - `compile.py` — CLI (`compile`, `verify`, `update-locks`, `ingest`); on every non-dry-run
     compile writes the repo-root `profiles.json` from the FULL registry (secret-scanned first), so

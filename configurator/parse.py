@@ -250,5 +250,6 @@ def parse_template(data: YamlMap, source_dir: Path | None = None) -> Template:
         post_install=_parse_post_install(data.get("post_install"), name),
         discovery=_parse_discovery(data.get("discovery"), name),
         setup_steps=_parse_setup_steps(data.get("setup_steps"), name),
+        portal_auth=bool(data.get("portal_auth", False)),
         source_dir=source_dir,
     )

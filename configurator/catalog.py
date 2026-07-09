@@ -31,12 +31,17 @@ GIT_URL_PLACEHOLDER = "<REPO_GIT_URL>"
 
 _AGENT_INSTRUCTIONS = (
     "You are pointed at the hermes-setup repo. To set up a Hermes agent from it: "
-    "(1) present the `profiles` list to the user — each entry's `name`, `kind`, and `description` "
-    "(`kind: base`, e.g. general, is the recommended general-purpose default; `locale` is a "
-    "region base; `persona` is specialized); "
-    "(2) ask which `name` they want; "
+    "(1) present the `profiles` list to the user — each entry's `name`, `kind`, `description`, and "
+    "`apply_modes` (`kind: base` `general` is the recommended FREE, no-per-call-cost, "
+    "general-purpose default; `general-pro` is the PAID Nous Portal variant — frontier models + the "
+    "Nous Tool Gateway, requires a paid Portal subscription; `locale` is a region base; `persona` is "
+    "specialized). A profile whose `apply_modes` lists `pro` can also be installed on the paid Portal "
+    "base by adding the installer's `--pro` / `-Pro` flag (bootstrap uses `--portal` / `-Portal`); "
+    "with no flag the free chain is used; "
+    "(2) ask which `name` they want (and, if it supports `pro`, whether they want the free default or "
+    "the paid Portal mode); "
     "(3a) IF you are already running inside a local clone of this repo, run that profile's "
-    "`local_install_command`; "
+    "`local_install_command` (append `--pro` for paid Portal mode); "
     "(3b) OTHERWISE run its `standalone_posix_command` (macOS/Linux) or `standalone_windows_command` "
     f"(Windows), first replacing {RAW_URL_PLACEHOLDER} and {GIT_URL_PLACEHOLDER} with the "
     "raw-content and git URLs of THIS repo (derive them from the link you were given). "
@@ -65,11 +70,15 @@ def _version(template: Template) -> str:
 
 def _profile_entry(template: Template) -> YamlMap:
     name = template.name
+    # A portal_auth base is paid-only; every other profile installs free by default and can be
+    # upgraded to the paid Portal base at apply time via the installer's --pro / --portal flag.
+    apply_modes: list[YamlValue] = ["pro"] if template.portal_auth else ["free", "pro"]
     return {
         "name": name,
         "kind": str(template.kind),
         "version": _version(template),
         "description": _description(template),
+        "apply_modes": apply_modes,
         "path": f"dist/{name}",
         # From inside a checkout only (relative ./dist path):
         "local_install_command": f"hermes profile install ./dist/{name} --name {name} --yes",

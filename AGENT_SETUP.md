@@ -9,6 +9,8 @@ It contains two independent runbooks. Pick one:
 
 Both runbooks assume `dist/<persona>/` already exists. If it does not, run `python -m configurator compile <persona>` first (or `python -m configurator compile --all`).
 
+**Free (default) or paid Nous Portal.** Every persona runs on the free chain by default. To run it on a **paid Nous Portal** subscription instead (frontier agentic models + the Nous Tool Gateway), add the paid-mode flag — `install.sh <name> --pro` / `install.ps1 <name> -Pro` (Runbook A) or `bootstrap.sh --template <name> --portal` / `bootstrap.ps1 -Template <name> -Portal` (Runbook B). It installs the persona's free distribution, then splices the `general-pro` base-layer config (`hermes config set`) and runs the Portal OAuth login (`hermes auth add nous`). Requires a **paid** Portal plan and `dist/general-pro/` compiled; the free path never needs it. Inside the agent, `/finish-setup` offers the same upgrade via `hermes setup --portal`.
+
 > **Prerequisites first.** Before either runbook, the host needs the one-time setup in
 > [`PREREQUISITES.md`](PREREQUISITES.md): Hermes installed, the **free Nous Portal subscription** +
 > `hermes setup --portal` login (the baseline that powers free chat), and **Node.js + git** (the

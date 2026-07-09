@@ -9,6 +9,12 @@
 #   ./install.sh --list                 # list installable profiles (name + description)
 #   ./install.sh <name> [--name PROF]   # install dist/<name> as a Hermes profile (default PROF=<name>)
 #   ./install.sh <name> --yes           # skip the Hermes install confirmation prompt
+#   ./install.sh <name> --pro           # after install, apply the PAID Nous Portal base (see below)
+#
+# --pro (paid Nous Portal mode): the free chain is the default. With --pro, after the persona is
+# installed this splices the base/general-pro base-layer config (Nous provider + Tool Gateway) onto
+# the profile via `hermes config set`, then runs the Portal OAuth login (`hermes auth add nous`).
+# It requires a PAID Nous Portal subscription and the general-pro base compiled (dist/general-pro/).
 #
 # Standalone (piped, no local checkout): pass the repo to clone via --repo <url> or $HERMES_SETUP_REPO:
 #   curl -fsSL <raw>/install.sh | bash -s -- --repo <git-url> --list
@@ -18,6 +24,7 @@ set -euo pipefail
 
 LIST=0
 ASSUME_YES=0
+PRO=0
 PROFILE=""
 NAME=""
 REPO_URL="${HERMES_SETUP_REPO:-}"
@@ -25,13 +32,14 @@ REPO_URL="${HERMES_SETUP_REPO:-}"
 usage() {
   cat <<'EOF'
 Usage: ./install.sh --list
-       ./install.sh <name> [--name PROFILE] [--yes] [--repo GIT_URL]
-  --list         List installable profiles (name + description) and exit.
-  <name>         Profile to install (a dist/<name> in this repo; see --list).
-  --name PROFILE Hermes profile name to install under (default: <name>).
-  --yes          Pass --yes to `hermes profile install` (no confirmation prompt).
-  --repo GIT_URL Clone this repo URL when run standalone (or set HERMES_SETUP_REPO).
-  -h, --help     Show this help.
+       ./install.sh <name> [--name PROFILE] [--yes] [--pro] [--repo GIT_URL]
+   --list         List installable profiles (name + description) and exit.
+   <name>         Profile to install (a dist/<name> in this repo; see --list).
+   --name PROFILE Hermes profile name to install under (default: <name>).
+   --yes          Pass --yes to `hermes profile install` (no confirmation prompt).
+   --pro          After install, apply the PAID Nous Portal base (needs a paid Portal plan).
+   --repo GIT_URL Clone this repo URL when run standalone (or set HERMES_SETUP_REPO).
+   -h, --help     Show this help.
 EOF
 }
 
@@ -41,6 +49,7 @@ while [ $# -gt 0 ]; do
     --name) [ $# -ge 2 ] || { echo "--name requires a value" >&2; usage >&2; exit 2; }; NAME="$2"; shift 2;;
     --repo) [ $# -ge 2 ] || { echo "--repo requires a value" >&2; usage >&2; exit 2; }; REPO_URL="$2"; shift 2;;
     --yes|-y) ASSUME_YES=1; shift;;
+    --pro) PRO=1; shift;;
     -h|--help) usage; exit 0;;
     --) shift
         while [ $# -gt 0 ]; do
@@ -124,6 +133,50 @@ install_profile() {
   echo "  # then run /finish-setup inside the agent to add a free key + install its skills"
 }
 
+# Splice the paid Nous Portal base-layer config onto an already-installed profile, then OAuth-login.
+# The base-layer key/value pairs mirror templates/base/general-pro/template.yaml (its compiled
+# dist/general-pro/config.yaml is the canonical declaration + the "is the base compiled?" gate).
+portal_splice() {
+  local profile="$1" cfg
+  cfg="$REPO_ROOT/dist/general-pro/config.yaml"
+  if [ ! -f "$cfg" ]; then
+    echo "Paid Portal mode (--pro) needs the general-pro base compiled, but $cfg is missing." >&2
+    echo "Compile it first:  python -m configurator compile general-pro" >&2
+    exit 4
+  fi
+  echo
+  echo "Applying the PAID Nous Portal base to '$profile' (requires a paid Portal subscription) ..."
+  local pairs=(
+    "model.provider=nous"
+    "model.default=anthropic/claude-sonnet-4.6"
+    "model.base_url=https://inference-api.nousresearch.com/v1"
+    "model.max_tokens=128000"
+    "web.backend=nous"
+    "web.use_gateway=true"
+    "browser.backend=nous"
+    "browser.use_gateway=true"
+    "image_gen.provider=nous"
+    "image_gen.use_gateway=true"
+    "tts.provider=nous"
+    "tts.use_gateway=true"
+    "delegation.provider=nous"
+    "delegation.model=anthropic/claude-haiku-4.5"
+    "auxiliary.vision.provider=nous"
+    "auxiliary.vision.model=google/gemini-3-flash-preview"
+    "auxiliary.vision.base_url=https://inference-api.nousresearch.com/v1"
+  )
+  local kv key val
+  for kv in "${pairs[@]}"; do
+    key="${kv%%=*}"; val="${kv#*=}"
+    hermes -p "$profile" config set "$key" "$val" >/dev/null 2>&1 \
+      || echo "  warning: 'hermes -p $profile config set $key' failed — set it manually." >&2
+  done
+  echo "Logging in to Nous Portal (OAuth) ..."
+  hermes auth add nous \
+    || echo "  Portal login not completed. Run 'hermes auth add nous' when a browser is available." >&2
+  echo "Paid Portal base applied. Verify with:  hermes -p $profile portal info"
+}
+
 resolve_repo_root
 
 if [ "$LIST" = 1 ]; then
@@ -144,3 +197,7 @@ if [ -z "$PROFILE" ]; then
 fi
 
 install_profile "$PROFILE"
+
+if [ "$PRO" = 1 ]; then
+  portal_splice "${NAME:-$PROFILE}"
+fi

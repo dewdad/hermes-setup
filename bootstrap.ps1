@@ -35,11 +35,16 @@
 .PARAMETER SkipSkillsInstall Do not auto-install the distribution's referenced skills.
 .PARAMETER SkipSetupSteps Do not run the distribution's local-tool setup steps (e.g. RTK).
 .PARAMETER Yes    Auto-confirm the referenced-skill install AND setup-step prompts (non-interactive).
+.PARAMETER Portal After applying, splice the PAID Nous Portal base (Nous provider + Tool Gateway) onto
+  this profile via `hermes config set` and run the Portal OAuth login. Needs a paid Nous Portal plan
+  and the general-pro base compiled (dist/general-pro/). The free chain is the default.
 
 .EXAMPLE
   .\bootstrap.ps1 -Template persona/developer -DryRun
 .EXAMPLE
   .\bootstrap.ps1 -Template il-legal
+.EXAMPLE
+  .\bootstrap.ps1 -Template developer -Portal
 #>
 [CmdletBinding()]
 param(
@@ -53,7 +58,8 @@ param(
   [switch]$SkipGws,
   [switch]$SkipSkillsInstall,
   [switch]$SkipSetupSteps,
-  [switch]$Yes
+  [switch]$Yes,
+  [switch]$Portal
 )
 
 $ErrorActionPreference = 'Stop'
@@ -232,6 +238,50 @@ try {
     $missing = (Get-EnvKeys $EnvExample) | Where-Object { $_ -notin (Get-EnvKeys $dstEnv) }
     if ($missing) { Write-Warn2 "existing .env preserved. Template keys not present:"; $missing | ForEach-Object { Write-Info "    $_" } }
     else { Write-Ok "existing .env preserved; all template keys present" }
+  }
+
+  Write-Step "Paid Nous Portal base (-Portal)"
+  if (-not $Portal) { Write-Skip "not requested (free chain is the default)" }
+  else {
+    $PortalCfg = Join-Path $RepoRoot 'dist\general-pro\config.yaml'
+    if (-not (Test-Path -LiteralPath $PortalCfg)) {
+      throw "-Portal needs the general-pro base compiled, but $PortalCfg is missing. Compile it first: python -m configurator compile general-pro"
+    }
+    # Base-layer key/value pairs mirror templates/base/general-pro/template.yaml (its compiled
+    # dist/general-pro/config.yaml above is the canonical declaration + the "is it compiled?" gate).
+    $PortalPairs = [ordered]@{
+      'model.provider'            = 'nous'
+      'model.default'             = 'anthropic/claude-sonnet-4.6'
+      'model.base_url'            = 'https://inference-api.nousresearch.com/v1'
+      'model.max_tokens'          = '128000'
+      'web.backend'               = 'nous'
+      'web.use_gateway'           = 'true'
+      'browser.backend'           = 'nous'
+      'browser.use_gateway'       = 'true'
+      'image_gen.provider'        = 'nous'
+      'image_gen.use_gateway'     = 'true'
+      'tts.provider'              = 'nous'
+      'tts.use_gateway'           = 'true'
+      'delegation.provider'       = 'nous'
+      'delegation.model'          = 'anthropic/claude-haiku-4.5'
+      'auxiliary.vision.provider' = 'nous'
+      'auxiliary.vision.model'    = 'google/gemini-3-flash-preview'
+      'auxiliary.vision.base_url' = 'https://inference-api.nousresearch.com/v1'
+    }
+    if ($DryRun) {
+      Write-Info "[dry-run] would 'hermes config set' the Nous Portal base-layer keys, then 'hermes auth add nous':"
+      foreach ($k in $PortalPairs.Keys) { Write-Info "      $k=$($PortalPairs[$k])" }
+    } elseif (-not $HermesCli) {
+      Write-Warn2 "hermes CLI not found — cannot apply the Portal base (set the keys manually later)"
+    } else {
+      Write-Info "applying the PAID Nous Portal base-layer (requires a paid Portal subscription)"
+      foreach ($k in $PortalPairs.Keys) {
+        & $HermesCli config set $k $PortalPairs[$k] 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) { Write-Ok "set $k" } else { Write-Warn2 "set $k failed (set it manually)" }
+      }
+      try { & $HermesCli auth add nous } catch { Write-Warn2 "Portal login not completed — run 'hermes auth add nous' when a browser is available" }
+      Write-Info "Portal base applied. Verify with: hermes portal info"
+    }
   }
 
   Write-Step "Referenced skills (auto-install)"

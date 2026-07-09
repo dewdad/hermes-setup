@@ -56,7 +56,6 @@ Or run `hermes auth` for a free Nous sign-in. On Desktop / messaging surfaces, a
 - `hermes skills install skills-sh/dewdad/open-skills/web-search-api` — Preferred web search — free SearXNG multi-engine (Google/Bing/DDG/70+). Keyless.
 - `hermes skills install skills-sh/dewdad/open-skills/browser-automation-agent` — Browser automation via agent-browser CLI. Free, keyless.
 - `hermes skills install skills-sh/dewdad/open-skills/using-web-scraping` — Scrape public web content with headless Chrome. Free, keyless.
-- `hermes skills install skills-sh/dewdad/open-skills/crawl-websites-at-scale` — Bulk crawl with Scrapy. Free, keyless.
 - `hermes skills install official/research/duckduckgo-search` — Keyless DuckDuckGo fallback for the `web` toolset when SearXNG instances are down.
 - `hermes skills install skills-sh/anthropics/skills/pdf` — Read/produce legal PDFs. Source-available; free to run locally.
 - `hermes skills install skills-sh/anthropics/skills/docx` — Draft legal documents in Word. Source-available; free to run locally.

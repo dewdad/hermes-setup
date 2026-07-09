@@ -26,7 +26,6 @@ after `hermes profile install`), run:
 hermes skills install skills-sh/dewdad/open-skills/web-search-api
 hermes skills install skills-sh/dewdad/open-skills/browser-automation-agent
 hermes skills install skills-sh/dewdad/open-skills/using-web-scraping
-hermes skills install skills-sh/dewdad/open-skills/crawl-websites-at-scale
 hermes skills install skills-sh/dewdad/beeper-desktop-api-skill/beeper-desktop-api
 hermes skills install skills-sh/skills-il/localization/hebrew-rtl-best-practices
 hermes skills install skills-sh/skills-il/localization/hebrew-document-generator
@@ -39,7 +38,6 @@ hermes skills install skills-sh/anthropics/skills/xlsx
 - `skills-sh/dewdad/open-skills/web-search-api` — Preferred web search — free SearXNG multi-engine (Google/Bing/DDG/70+). Keyless.
 - `skills-sh/dewdad/open-skills/browser-automation-agent` — Browser automation via agent-browser CLI. Free, keyless.
 - `skills-sh/dewdad/open-skills/using-web-scraping` — Scrape public web content with headless Chrome. Free, keyless.
-- `skills-sh/dewdad/open-skills/crawl-websites-at-scale` — Bulk crawl with Scrapy. Free, keyless.
 - `skills-sh/dewdad/beeper-desktop-api-skill/beeper-desktop-api` — Cross-platform messaging (WhatsApp/iMessage/Telegram/…). Needs the free Beeper Desktop app.
 - `skills-sh/skills-il/localization/hebrew-rtl-best-practices` — Hebrew/RTL best-practices from agentskills.co.il (skills-il). Free to run.
 - `skills-sh/skills-il/localization/hebrew-document-generator` — IL-native Hebrew PDF/DOCX/PPTX with correct RTL + bidi. Preferred for Hebrew output.

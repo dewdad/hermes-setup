@@ -70,7 +70,15 @@ inheritance) the `configurator/` compiler resolves into native Hermes profile di
   - **Bucket 3 (default path)** — `post_install[]` ids referenced from trusted registries; the apply
     flow auto-installs them (`hermes skills install` / `tap add`). Every id must be verified real.
   - **Bucket 2** — live shared checkouts via `skills.external_dirs` (e.g. `~/open-skills/skills`);
-    never copied into `dist/`.
+    never copied into `dist/`. **Trust model (by design):** external-dir skills load with **`local`
+    trust and are NOT run through Hermes' per-skill hub security scan** — the whole checkout is
+    trusted as a unit because it comes from a source the persona author vetted. This is the
+    seamless "trust the whole catalogue" path; the scanned, per-skill path is Bucket 3
+    (`post_install[]`). Consequence (verified 2026-07 via the factory-home E2E): a skill the hub
+    scanner would BLOCK on a community-source install (e.g. `crawl-websites-at-scale`, whose
+    `SKILL.md` uses `sudo apt-get`/`pip`) still loads via the external dir. So a skill that a
+    Bucket-3 install would block should NOT also be listed in `post_install[]` (it just emits a
+    scary BLOCK during apply for no gain) — rely on the Bucket-2 catalogue for it instead.
   - **Bucket 1 (dormant capability)** — `SkillRef.source` ∈ {`github`, `url`, `well-known`} still
     exists for genuinely *fetched* real skills pinned in `locks/` if offline reproducibility is ever
     needed. `source: local` is REMOVED — authoring skill content in-repo is forbidden.

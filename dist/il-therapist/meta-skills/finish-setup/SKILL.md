@@ -56,7 +56,6 @@ Or run `hermes auth` for a free Nous sign-in. On Desktop / messaging surfaces, a
 - `hermes skills install skills-sh/dewdad/open-skills/web-search-api` — Preferred web search — free SearXNG multi-engine (Google/Bing/DDG/70+). Keyless.
 - `hermes skills install skills-sh/dewdad/open-skills/browser-automation-agent` — Browser automation via agent-browser CLI. Free, keyless.
 - `hermes skills install skills-sh/dewdad/open-skills/using-web-scraping` — Scrape public web content with headless Chrome. Free, keyless.
-- `hermes skills install skills-sh/dewdad/open-skills/crawl-websites-at-scale` — Bulk crawl with Scrapy. Free, keyless.
 - `hermes skills install skills-sh/skills-il/localization/hebrew-rtl-best-practices` — Hebrew/RTL best-practices from agentskills.co.il (skills-il). Free to run.
 - `hermes skills install skills-sh/skills-il/localization/hebrew-document-generator` — IL-native Hebrew PDF/DOCX/PPTX with correct RTL + bidi. Preferred for Hebrew output.
 - `hermes skills install skills-sh/anthropics/skills/docx` — Word documents (non-Hebrew fallback). Source-available; free to run locally.

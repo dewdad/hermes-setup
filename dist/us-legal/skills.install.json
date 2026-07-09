@@ -16,11 +16,6 @@
       "tap": false
     },
     {
-      "id": "skills-sh/dewdad/open-skills/crawl-websites-at-scale",
-      "note": "Bulk crawl with Scrapy. Free, keyless.",
-      "tap": false
-    },
-    {
       "id": "official/research/duckduckgo-search",
       "note": "Keyless DuckDuckGo fallback for the `web` toolset when SearXNG instances are down.",
       "tap": false

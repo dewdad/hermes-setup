@@ -36,9 +36,29 @@ class CatalogShape(unittest.TestCase):
         self.assertEqual(entry["description"], "Israeli legal")
         self.assertEqual(entry["path"], "dist/il-legal")
         self.assertEqual(
-            entry["install_command"],
+            entry["local_install_command"],
             "hermes profile install ./dist/il-legal --name il-legal --yes",
         )
+
+    def test_standalone_commands_use_placeholders_and_name(self) -> None:
+        entry = build_catalog([_tpl("il-legal")])["profiles"][0]  # type: ignore[index]
+        posix = entry["standalone_posix_command"]
+        windows = entry["standalone_windows_command"]
+        # Name is substituted, but repo URLs stay placeholders (no hard-coded org — contract).
+        self.assertIn("<RAW_REPO_URL>", posix)
+        self.assertIn("<REPO_GIT_URL>", posix)
+        self.assertIn(" il-legal ", posix)
+        self.assertIn("--yes", posix)
+        self.assertIn("<RAW_REPO_URL>", windows)
+        self.assertIn("<REPO_GIT_URL>", windows)
+        self.assertIn("il-legal", windows)
+        self.assertIn("-Yes", windows)
+
+    def test_no_hardcoded_url_anywhere(self) -> None:
+        # The whole catalogue must never leak a concrete host/org.
+        text = dump_json(build_catalog([_tpl("general", description="d", version="1.0.0")]))
+        for leaked in ("github.com", "raw.githubusercontent.com", "https://", "http://"):
+            self.assertNotIn(leaked, text)
 
     def test_description_and_version_fallback(self) -> None:
         entry = build_catalog([_tpl("bare")])["profiles"][0]  # type: ignore[index]

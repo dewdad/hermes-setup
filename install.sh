@@ -38,10 +38,15 @@ EOF
 while [ $# -gt 0 ]; do
   case "$1" in
     --list) LIST=1; shift;;
-    --name) NAME="$2"; shift 2;;
-    --repo) REPO_URL="$2"; shift 2;;
+    --name) [ $# -ge 2 ] || { echo "--name requires a value" >&2; usage >&2; exit 2; }; NAME="$2"; shift 2;;
+    --repo) [ $# -ge 2 ] || { echo "--repo requires a value" >&2; usage >&2; exit 2; }; REPO_URL="$2"; shift 2;;
     --yes|-y) ASSUME_YES=1; shift;;
     -h|--help) usage; exit 0;;
+    --) shift
+        while [ $# -gt 0 ]; do
+          if [ -z "$PROFILE" ]; then PROFILE="$1"; shift
+          else echo "unexpected argument: $1" >&2; exit 2; fi
+        done;;
     -*) echo "unknown option: $1" >&2; usage; exit 2;;
     *) if [ -z "$PROFILE" ]; then PROFILE="$1"; shift; else echo "unexpected argument: $1" >&2; exit 2; fi;;
   esac
@@ -60,11 +65,15 @@ resolve_repo_root() {
     exit 1
   fi
   command -v git >/dev/null 2>&1 || { echo "git not found — needed to clone $REPO_URL" >&2; exit 1; }
-  local cache="${HERMES_SETUP_CACHE:-$HOME/.cache/hermes-setup}"
+  # Key the cache dir by the repo URL so a later --repo <other-url> never reuses the wrong clone.
+  local cache_base url_key cache
+  cache_base="${HERMES_SETUP_CACHE:-$HOME/.cache/hermes-setup}"
+  url_key="$(printf '%s' "$REPO_URL" | cksum | cut -d' ' -f1)"
+  cache="$cache_base/$url_key"
   if [ -d "$cache/.git" ]; then
-    git -C "$cache" pull --ff-only >/dev/null 2>&1 || true
+    git -C "$cache" pull --ff-only >/dev/null 2>&1 || true   # tolerate offline / non-ff
   else
-    mkdir -p "$(dirname "$cache")"
+    mkdir -p "$cache_base"
     git clone --depth 1 "$REPO_URL" "$cache" >/dev/null 2>&1 || { echo "clone failed: $REPO_URL" >&2; exit 1; }
   fi
   REPO_ROOT="$cache"
@@ -76,7 +85,8 @@ list_profiles() {
     [ -f "$d/distribution.yaml" ] || continue
     found=1
     name="$(basename "$d")"
-    desc="$(grep -E '^description:' "$d/distribution.yaml" | head -n1 | sed -E 's/^description:[[:space:]]*//; s/^["'\'']//; s/["'\'']$//')"
+    # pipefail-safe: a manifest with no `description:` must not abort the script.
+    desc="$( { grep -m1 -E '^description:' "$d/distribution.yaml" || true; } | sed -E 's/^description:[[:space:]]*//; s/^["'\'']//; s/["'\'']$//' )"
     printf '  %-14s %s\n' "$name" "$desc"
   done
   [ "$found" = 1 ] || { echo "No compiled profiles found under $REPO_ROOT/dist/." >&2; exit 1; }
@@ -95,6 +105,13 @@ install_profile() {
     exit 1
   }
   profile="${NAME:-$persona}"
+  # Preflight: fail clearly on a name collision instead of hanging on a Hermes prompt.
+  if hermes profile list 2>/dev/null | grep -Eq "(^|[[:space:]])${profile}([[:space:]]|\$)"; then
+    echo "A Hermes profile named '$profile' already exists." >&2
+    echo "Rerun with a different name:  ./install.sh $persona --name <new-name>" >&2
+    echo "(or update the existing one:  hermes profile update $profile)" >&2
+    exit 3
+  fi
   echo "Installing '$persona' as Hermes profile '$profile' from $src ..."
   if [ "$ASSUME_YES" = 1 ]; then
     hermes profile install "$src" --name "$profile" --yes

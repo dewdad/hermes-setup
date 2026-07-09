@@ -46,6 +46,37 @@ class Gates(unittest.TestCase):
             )
             self.assertEqual(run_verify(root), 1)
 
+    def _dist_profile(self, root: Path, name: str) -> None:
+        (root / "dist" / name).mkdir(parents=True)
+        (root / "dist" / name / "distribution.yaml").write_text(
+            f"name: {name}\n", encoding="utf-8",
+        )
+
+    def test_catalog_matches_dist_passes(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _clean_repo(root)
+            self._dist_profile(root, "a")
+            (root / "profiles.json").write_text('{"profiles": [{"name": "a"}]}\n', encoding="utf-8")
+            self.assertEqual(run_verify(root), 0)
+
+    def test_catalog_lists_missing_dist_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _clean_repo(root)
+            # profiles.json advertises "a" but no dist/a/distribution.yaml exists.
+            (root / "profiles.json").write_text('{"profiles": [{"name": "a"}]}\n', encoding="utf-8")
+            self.assertEqual(run_verify(root), 1)
+
+    def test_installable_dist_absent_from_catalog_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _clean_repo(root)
+            self._dist_profile(root, "a")
+            self._dist_profile(root, "b")
+            (root / "profiles.json").write_text('{"profiles": [{"name": "a"}]}\n', encoding="utf-8")
+            self.assertEqual(run_verify(root), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -52,8 +52,9 @@ repo and ask it to set you up, and the reliable flow is **one fetch + one comman
 repo-subdirectory install (Hermes can't do that), no multi-step reasoning.
 
 1. **Fetch the catalogue.** [`profiles.json`](profiles.json) at the repo root is a generated,
-   machine-readable index of every installable profile — `name`, `description`, `version`, the
-   `dist/<name>` path, and a ready-to-run `install_command` — plus an `agent_instructions` string
+   machine-readable index of every installable profile — `name`, `kind`, `description`, `version`,
+   the `dist/<name>` path, and three ready-to-run commands (`local_install_command`,
+   `standalone_posix_command`, `standalone_windows_command`) — plus an `agent_instructions` string
    the model follows verbatim. One raw-URL fetch gives the agent the whole list:
 
    ```
@@ -63,24 +64,32 @@ repo-subdirectory install (Hermes can't do that), no multi-step reasoning.
 2. **List and pick.** The agent shows the `profiles[]` entries and asks which one you want.
 
 3. **Install the choice.** `hermes profile install` **cannot** target a repo *subdirectory* (it
-   clones the URL root and needs `distribution.yaml` there), so installation runs from a **local
-   clone**. The bundled one-shot installer does the clone + local install for you:
+   clones the URL root and needs `distribution.yaml` there), so installation always runs from a
+   **local clone**. Two cases:
 
-   ```bash
-   ./install.sh <name>          # POSIX;  --list to list; --name / --yes / --repo supported
-   ```
+   - **Already inside a clone** → run the profile's `local_install_command`, i.e. the bundled
+     installer:
 
-   ```powershell
-   .\install.ps1 <name>         # Windows; -List, -Name, -Yes, -Repo
-   ```
+     ```bash
+     ./install.sh <name> --yes          # POSIX;  --list to list; --name / --repo also supported
+     ```
 
-   Run it standalone (no checkout yet) by giving it the repo to clone:
+     ```powershell
+     .\install.ps1 <name> -Yes          # Windows; -List, -Name, -Repo
+     ```
 
-   ```bash
-   curl -fsSL <RAW_REPO_URL>/install.sh | bash -s -- --repo <REPO_GIT_URL> --list
-   ```
+   - **Standalone (no checkout yet)** → run the profile's `standalone_posix_command` /
+     `standalone_windows_command`, which clone the repo for you (substitute the URLs of *this* repo):
 
-   Equivalently: clone the repo, then `hermes profile install ./dist/<name> --name <name> --yes`.
+     ```bash
+     curl -fsSL <RAW_REPO_URL>/install.sh | bash -s -- <name> --repo <REPO_GIT_URL> --yes
+     ```
+
+     ```powershell
+     $p=Join-Path $env:TEMP 'hermes-setup-install.ps1'; irm <RAW_REPO_URL>/install.ps1 -OutFile $p; & $p <name> -Repo <REPO_GIT_URL> -Yes
+     ```
+
+   `--yes` / `-Yes` skips the Hermes confirmation prompt (recommended for unattended agent runs).
 
 4. **Finish.** Open the profile (`hermes -p <name>`) and run `/finish-setup` to add a free key and
    install its skills.

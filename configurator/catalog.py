@@ -25,24 +25,31 @@ from configurator.yamlio import YamlMap, YamlValue
 CATALOG_FILENAME = "profiles.json"
 SCHEMA_ID = "hermes-setup/profiles@1"
 
+# Placeholders (NOT hard-coded — the publisher/agent substitutes the repo it was handed).
+RAW_URL_PLACEHOLDER = "<RAW_REPO_URL>"
+GIT_URL_PLACEHOLDER = "<REPO_GIT_URL>"
+
 _AGENT_INSTRUCTIONS = (
     "You are pointed at the hermes-setup repo. To set up a Hermes agent from it: "
-    "(1) present the `profiles` list below to the user (each entry's `name` + `description`); "
-    "(2) ask which one they want; "
-    "(3) install the chosen <name> by running its `install_command`. "
-    "IMPORTANT: `hermes profile install` cannot install from a repo-subdirectory URL, so the "
-    "profile must be installed from a LOCAL clone of this repo. The simplest path is the bundled "
-    "installer, which does the clone + install for you: `./install.sh <name>` (POSIX) or "
-    "`./install.ps1 <name>` (Windows). Equivalently, clone the repo and run "
-    "`hermes profile install ./dist/<name> --name <name> --yes`. "
+    "(1) present the `profiles` list to the user — each entry's `name`, `kind`, and `description` "
+    "(`kind: base`, e.g. general, is the recommended general-purpose default; `locale` is a "
+    "region base; `persona` is specialized); "
+    "(2) ask which `name` they want; "
+    "(3a) IF you are already running inside a local clone of this repo, run that profile's "
+    "`local_install_command`; "
+    "(3b) OTHERWISE run its `standalone_posix_command` (macOS/Linux) or `standalone_windows_command` "
+    f"(Windows), first replacing {RAW_URL_PLACEHOLDER} and {GIT_URL_PLACEHOLDER} with the "
+    "raw-content and git URLs of THIS repo (derive them from the link you were given). "
+    "NEVER run `hermes profile install` against a repo-subdirectory URL — it only accepts a repo "
+    "ROOT or a LOCAL folder, and the standalone command creates that local clone for you. "
     "After install, open the profile (`hermes -p <name>`) and run `/finish-setup`."
 )
 
 _INSTALL_NOTE = (
     "hermes profile install cannot target a subdirectory of a git repo (it clones the URL root and "
-    "requires distribution.yaml there). Install from a local clone: run ./install.sh <name> "
-    "(POSIX) or ./install.ps1 <name> (Windows), or clone this repo then "
-    "hermes profile install ./dist/<name> --name <name> --yes."
+    "requires distribution.yaml there). Install from a LOCAL clone: from inside a checkout run a "
+    "profile's local_install_command; standalone, run its standalone_posix_command / "
+    "standalone_windows_command (which clone the repo for you). See each profile entry."
 )
 
 
@@ -64,7 +71,18 @@ def _profile_entry(template: Template) -> YamlMap:
         "version": _version(template),
         "description": _description(template),
         "path": f"dist/{name}",
-        "install_command": f"hermes profile install ./dist/{name} --name {name} --yes",
+        # From inside a checkout only (relative ./dist path):
+        "local_install_command": f"hermes profile install ./dist/{name} --name {name} --yes",
+        # Standalone (no checkout): clone + install via the bundled scripts. URLs are placeholders.
+        "standalone_posix_command": (
+            f"curl -fsSL {RAW_URL_PLACEHOLDER}/install.sh | bash -s -- {name} "
+            f"--repo {GIT_URL_PLACEHOLDER} --yes"
+        ),
+        "standalone_windows_command": (
+            f"$p=Join-Path $env:TEMP 'hermes-setup-install.ps1'; "
+            f"irm {RAW_URL_PLACEHOLDER}/install.ps1 -OutFile $p; "
+            f"& $p {name} -Repo {GIT_URL_PLACEHOLDER} -Yes"
+        ),
     }
 
 

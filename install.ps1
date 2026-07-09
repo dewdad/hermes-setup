@@ -10,14 +10,14 @@
 
   No org/URL is baked in. Run from a clone of hermes-setup and it uses that checkout directly.
 
-.PARAMETER Profile
+.PARAMETER Persona
   Profile to install (a dist/<name> in this repo; see -List).
 
 .PARAMETER List
   List installable profiles (name + description) and exit.
 
 .PARAMETER Name
-  Hermes profile name to install under. Default: <Profile>.
+  Hermes profile name to install under. Default: <Persona>.
 
 .PARAMETER Yes
   Pass --yes to `hermes profile install` (no confirmation prompt).
@@ -32,7 +32,7 @@
 #>
 [CmdletBinding()]
 param(
-  [Parameter(Position = 0)][string]$Profile,
+  [Parameter(Position = 0)][string]$Persona,
   [switch]$List,
   [string]$Name,
   [switch]$Yes,
@@ -50,13 +50,17 @@ function Resolve-RepoRoot {
   }
   $git = (Get-Command git -ErrorAction SilentlyContinue).Source
   if (-not $git) { Write-Error "git not found — needed to clone $Repo" }
-  $cache = if ($env:HERMES_SETUP_CACHE) { $env:HERMES_SETUP_CACHE } else { Join-Path $env:LOCALAPPDATA 'hermes-setup-cache' }
+  # Key the cache dir by the repo URL so a later -Repo <other-url> never reuses the wrong clone.
+  $cacheBase = if ($env:HERMES_SETUP_CACHE) { $env:HERMES_SETUP_CACHE } else { Join-Path $env:LOCALAPPDATA 'hermes-setup-cache' }
+  $md5 = [System.Security.Cryptography.MD5]::Create()
+  $urlKey = ([BitConverter]::ToString($md5.ComputeHash([Text.Encoding]::UTF8.GetBytes($Repo))) -replace '-', '').Substring(0, 12)
+  $cache = Join-Path $cacheBase $urlKey
   if (Test-Path -LiteralPath (Join-Path $cache '.git')) {
-    & $git -C $cache pull --ff-only 2>&1 | Out-Null
+    & $git -C $cache pull --ff-only 2>&1 | Out-Null   # tolerate offline / non-ff
   } else {
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $cache) | Out-Null
+    New-Item -ItemType Directory -Force -Path $cacheBase | Out-Null
     & $git clone --depth 1 $Repo $cache 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { Write-Error "clone failed: $Repo" }
+    if ($LASTEXITCODE -ne 0) { Write-Error "clone failed: $Repo"; exit 1 }
   }
   return $cache
 }
@@ -90,7 +94,7 @@ if ($List) {
   return
 }
 
-if (-not $Profile) {
+if (-not $Persona) {
   Write-Host 'No profile selected. Available profiles:'
   Show-Profiles $Profiles
   Write-Host ''
@@ -98,9 +102,9 @@ if (-not $Profile) {
   exit 2
 }
 
-$src = Join-Path $RepoRoot "dist\$Profile"
+$src = Join-Path $RepoRoot "dist\$Persona"
 if (-not (Test-Path -LiteralPath (Join-Path $src 'distribution.yaml'))) {
-  Write-Host "Unknown profile: '$Profile'. Available:"
+  Write-Host "Unknown profile: '$Persona'. Available:"
   Show-Profiles $Profiles
   exit 2
 }
@@ -108,10 +112,22 @@ if (-not (Test-Path -LiteralPath (Join-Path $src 'distribution.yaml'))) {
 $hermes = (Get-Command hermes -ErrorAction SilentlyContinue).Source
 if (-not $hermes) { Write-Error 'hermes CLI not found on PATH. Install Hermes first (see PREREQUISITES.md).' }
 
-$profileName = if ($Name) { $Name } else { $Profile }
-Write-Host "Installing '$Profile' as Hermes profile '$profileName' from $src ..."
+$profileName = if ($Name) { $Name } else { $Persona }
+
+# Preflight: fail clearly on a name collision instead of hanging on a Hermes prompt.
+$existing = ''
+try { $existing = ((& $hermes profile list 2>$null) -join "`n") } catch { }
+if ($existing -match "(^|\s)$([regex]::Escape($profileName))(\s|`$)") {
+  Write-Host "A Hermes profile named '$profileName' already exists."
+  Write-Host "Rerun with a different name:  .\install.ps1 $Persona -Name <new-name>"
+  Write-Host "(or update the existing one:  hermes profile update $profileName)"
+  exit 3
+}
+
+Write-Host "Installing '$Persona' as Hermes profile '$profileName' from $src ..."
 if ($Yes) { & $hermes profile install $src --name $profileName --yes }
 else { & $hermes profile install $src --name $profileName }
+if ($LASTEXITCODE -ne 0) { Write-Host "hermes profile install failed (exit $LASTEXITCODE)."; exit $LASTEXITCODE }
 
 Write-Host ''
 Write-Host 'Installed. Finish setup:'

@@ -60,6 +60,37 @@ def _secret_gate(root: Path, fails: list[str]) -> None:
             fails.append(str(err))
 
 
+def _catalog_gate(root: Path, fails: list[str]) -> None:
+    """profiles.json must list exactly the installable dist/<name> profiles — no drift.
+
+    A stale/partial ``dist/`` (or a deleted template) would otherwise let the catalogue advertise a
+    profile whose ``dist/<name>/distribution.yaml`` is missing (install would fail), or hide an
+    installable one. Both directions are failures.
+    """
+    catalog = root / "profiles.json"
+    dist = root / "dist"
+    if not catalog.is_file() or not dist.is_dir():
+        return
+    data = load_yaml(catalog)
+    raw_profiles = data.get("profiles")
+    if not isinstance(raw_profiles, list):
+        fails.append("profiles.json: 'profiles' is missing or not a list")
+        return
+    catalog_names: set[str] = set()
+    for entry in raw_profiles:
+        if isinstance(entry, dict):
+            name = entry.get("name")
+            if isinstance(name, str):
+                catalog_names.add(name)
+    dist_names: set[str] = {
+        d.name for d in dist.iterdir() if (d / "distribution.yaml").is_file()
+    }
+    for missing in sorted(catalog_names - dist_names):
+        fails.append(f"profiles.json lists '{missing}' but dist/{missing}/distribution.yaml is missing")
+    for extra in sorted(dist_names - catalog_names):
+        fails.append(f"dist/{extra}/ is installable but absent from profiles.json (run compile --all)")
+
+
 def _config_key_gate(root: Path) -> None:
     """Warn (never fail) on unknown top-level config.yaml keys — matches lenient live config check."""
     dist = root / "dist"
@@ -115,6 +146,7 @@ def run_verify(root: Path) -> int:
     fails: list[str] = []
     _config_key_gate(root)
     _secret_gate(root, fails)
+    _catalog_gate(root, fails)
     _lock_gate(root, fails)
     _dox_gate(root, fails)
     if fails:

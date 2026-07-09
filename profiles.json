@@ -1,67 +1,81 @@
 {
-  "agent_instructions": "You are pointed at the hermes-setup repo. To set up a Hermes agent from it: (1) present the `profiles` list below to the user (each entry's `name` + `description`); (2) ask which one they want; (3) install the chosen <name> by running its `install_command`. IMPORTANT: `hermes profile install` cannot install from a repo-subdirectory URL, so the profile must be installed from a LOCAL clone of this repo. The simplest path is the bundled installer, which does the clone + install for you: `./install.sh <name>` (POSIX) or `./install.ps1 <name>` (Windows). Equivalently, clone the repo and run `hermes profile install ./dist/<name> --name <name> --yes`. After install, open the profile (`hermes -p <name>`) and run `/finish-setup`.",
+  "agent_instructions": "You are pointed at the hermes-setup repo. To set up a Hermes agent from it: (1) present the `profiles` list to the user — each entry's `name`, `kind`, and `description` (`kind: base`, e.g. general, is the recommended general-purpose default; `locale` is a region base; `persona` is specialized); (2) ask which `name` they want; (3a) IF you are already running inside a local clone of this repo, run that profile's `local_install_command`; (3b) OTHERWISE run its `standalone_posix_command` (macOS/Linux) or `standalone_windows_command` (Windows), first replacing <RAW_REPO_URL> and <REPO_GIT_URL> with the raw-content and git URLs of THIS repo (derive them from the link you were given). NEVER run `hermes profile install` against a repo-subdirectory URL — it only accepts a repo ROOT or a LOCAL folder, and the standalone command creates that local clone for you. After install, open the profile (`hermes -p <name>`) and run `/finish-setup`.",
   "generated_by": "python -m configurator compile",
   "hermes_requires": ">=0.18.0",
   "install": {
-    "note": "hermes profile install cannot target a subdirectory of a git repo (it clones the URL root and requires distribution.yaml there). Install from a local clone: run ./install.sh <name> (POSIX) or ./install.ps1 <name> (Windows), or clone this repo then hermes profile install ./dist/<name> --name <name> --yes.",
+    "note": "hermes profile install cannot target a subdirectory of a git repo (it clones the URL root and requires distribution.yaml there). Install from a LOCAL clone: from inside a checkout run a profile's local_install_command; standalone, run its standalone_posix_command / standalone_windows_command (which clone the repo for you). See each profile entry.",
     "posix_script": "./install.sh",
     "windows_script": "./install.ps1"
   },
   "profiles": [
     {
       "description": "Software-developer agent — TDD, PR workflow, code review, terminal, on the free chain.",
-      "install_command": "hermes profile install ./dist/developer --name developer --yes",
       "kind": "persona",
+      "local_install_command": "hermes profile install ./dist/developer --name developer --yes",
       "name": "developer",
       "path": "dist/developer",
+      "standalone_posix_command": "curl -fsSL <RAW_REPO_URL>/install.sh | bash -s -- developer --repo <REPO_GIT_URL> --yes",
+      "standalone_windows_command": "$p=Join-Path $env:TEMP 'hermes-setup-install.ps1'; irm <RAW_REPO_URL>/install.ps1 -OutFile $p; & $p developer -Repo <REPO_GIT_URL> -Yes",
       "version": "1.0.0"
     },
     {
       "description": "General-purpose Hermes agent on a free, no-lock-in model chain.",
-      "install_command": "hermes profile install ./dist/general --name general --yes",
       "kind": "base",
+      "local_install_command": "hermes profile install ./dist/general --name general --yes",
       "name": "general",
       "path": "dist/general",
+      "standalone_posix_command": "curl -fsSL <RAW_REPO_URL>/install.sh | bash -s -- general --repo <REPO_GIT_URL> --yes",
+      "standalone_windows_command": "$p=Join-Path $env:TEMP 'hermes-setup-install.ps1'; irm <RAW_REPO_URL>/install.ps1 -OutFile $p; & $p general -Repo <REPO_GIT_URL> -Yes",
       "version": "1.0.0"
     },
     {
       "description": "Hebrew-first Israeli agent — RTL-aware, gov/forms-ready, on the free base chain.",
-      "install_command": "hermes profile install ./dist/il --name il --yes",
       "kind": "locale",
+      "local_install_command": "hermes profile install ./dist/il --name il --yes",
       "name": "il",
       "path": "dist/il",
+      "standalone_posix_command": "curl -fsSL <RAW_REPO_URL>/install.sh | bash -s -- il --repo <REPO_GIT_URL> --yes",
+      "standalone_windows_command": "$p=Join-Path $env:TEMP 'hermes-setup-install.ps1'; irm <RAW_REPO_URL>/install.ps1 -OutFile $p; & $p il -Repo <REPO_GIT_URL> -Yes",
       "version": "1.0.0"
     },
     {
       "description": "Everyday Israeli citizen assistant — gov services, consumer rights, forms, budgeting.",
-      "install_command": "hermes profile install ./dist/il-citizen --name il-citizen --yes",
       "kind": "persona",
+      "local_install_command": "hermes profile install ./dist/il-citizen --name il-citizen --yes",
       "name": "il-citizen",
       "path": "dist/il-citizen",
+      "standalone_posix_command": "curl -fsSL <RAW_REPO_URL>/install.sh | bash -s -- il-citizen --repo <REPO_GIT_URL> --yes",
+      "standalone_windows_command": "$p=Join-Path $env:TEMP 'hermes-setup-install.ps1'; irm <RAW_REPO_URL>/install.ps1 -OutFile $p; & $p il-citizen -Repo <REPO_GIT_URL> -Yes",
       "version": "1.0.0"
     },
     {
       "description": "Israeli legal-tech assistant — contracts, tax, compliance, with strict disclaimers.",
-      "install_command": "hermes profile install ./dist/il-legal --name il-legal --yes",
       "kind": "persona",
+      "local_install_command": "hermes profile install ./dist/il-legal --name il-legal --yes",
       "name": "il-legal",
       "path": "dist/il-legal",
+      "standalone_posix_command": "curl -fsSL <RAW_REPO_URL>/install.sh | bash -s -- il-legal --repo <REPO_GIT_URL> --yes",
+      "standalone_windows_command": "$p=Join-Path $env:TEMP 'hermes-setup-install.ps1'; irm <RAW_REPO_URL>/install.ps1 -OutFile $p; & $p il-legal -Repo <REPO_GIT_URL> -Yes",
       "version": "1.0.0"
     },
     {
       "description": "Hebrew emotional-support companion — empathic, boundaried, crisis-aware. Not therapy.",
-      "install_command": "hermes profile install ./dist/il-therapist --name il-therapist --yes",
       "kind": "persona",
+      "local_install_command": "hermes profile install ./dist/il-therapist --name il-therapist --yes",
       "name": "il-therapist",
       "path": "dist/il-therapist",
+      "standalone_posix_command": "curl -fsSL <RAW_REPO_URL>/install.sh | bash -s -- il-therapist --repo <REPO_GIT_URL> --yes",
+      "standalone_windows_command": "$p=Join-Path $env:TEMP 'hermes-setup-install.ps1'; irm <RAW_REPO_URL>/install.ps1 -OutFile $p; & $p il-therapist -Repo <REPO_GIT_URL> -Yes",
       "version": "1.0.0"
     },
     {
       "description": "US legal-research assistant — jurisdiction-aware information with strict disclaimers.",
-      "install_command": "hermes profile install ./dist/us-legal --name us-legal --yes",
       "kind": "persona",
+      "local_install_command": "hermes profile install ./dist/us-legal --name us-legal --yes",
       "name": "us-legal",
       "path": "dist/us-legal",
+      "standalone_posix_command": "curl -fsSL <RAW_REPO_URL>/install.sh | bash -s -- us-legal --repo <REPO_GIT_URL> --yes",
+      "standalone_windows_command": "$p=Join-Path $env:TEMP 'hermes-setup-install.ps1'; irm <RAW_REPO_URL>/install.ps1 -OutFile $p; & $p us-legal -Repo <REPO_GIT_URL> -Yes",
       "version": "1.0.0"
     }
   ],

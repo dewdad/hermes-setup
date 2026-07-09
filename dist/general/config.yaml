@@ -40,6 +40,8 @@ model:
   provider: opencode-zen
 plugins:
   enabled: []
+prompt_caching:
+  cache_ttl: 1h
 providers:
   zenmux:
     base_url: https://zenmux.ai/api/v1

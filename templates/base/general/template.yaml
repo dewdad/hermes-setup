@@ -35,6 +35,11 @@ config:
     inherit_mcp_toolsets: true
   agent:
     verify_on_stop: false
+  # Keep the Claude prefix cache warm across the long pauses between messaging turns (applies on
+  # Nous Portal / Anthropic / OpenRouter). Hermes' default is "5m"; "1h" better suits chat/gateway
+  # use where turns are minutes apart. Always-on, free — no per-call cost.
+  prompt_caching:
+    cache_ttl: "1h"
   # Zero paid Nous Tool Gateway (Portal) routing by default. Hermes' rule: use_gateway:false uses a
   # direct backend if one exists and only *falls back* to the paid gateway when none does — so each
   # gateway-backed tool is both forced off the gateway AND pinned to a free/keyless direct backend,

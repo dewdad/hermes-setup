@@ -107,6 +107,17 @@ pwsh -File tests/sandbox/run-sandbox.ps1 -PersistHome
   env. WebView2 (step 8) still re-runs (~30 s — it is system/registry state that can't persist).
 - **Reset the whole store:** delete `%LOCALAPPDATA%\hermes-sandbox-persist\<template>` (forces a full reinstall next run).
 
+> ⚠️ **Known limitation (empirical).** The *first* persisted install writes the whole toolchain —
+> including a `git clone` of `hermes-agent`, the Python venv, and Playwright's ~300 MB — into a
+> **Windows Sandbox mapped folder**, whose redirected filesystem is markedly slower and less stable
+> than a local disk for many-small-file I/O. In testing, a first `-PersistHome` install reached
+> ~680 MB (uv + PortableGit + Node) and then **stalled during the `hermes-agent` git clone** (the VM
+> ended before writing `DONE.txt`). The `$ResolvedHome` fix is confirmed (the install correctly
+> targets `C:\hermes-persist\hermes-home`), but the mapped-folder clone is the weak point. If the
+> first install doesn't finish, delete the persist store and retry — or, for **reliable** heavy
+> persistence, prefer **Option B (`hyperv-checkpoint.ps1`)**, which installs to a real VM disk (no
+> mapped-folder penalty) and snapshots the finished post-install state.
+
 ### Dirty (default) vs. reset-to-baseline (`-ResetState`)
 
 `-PersistHome` alone keeps a **lived-in "dirty" home**: mutable Hermes state (`sessions/`, `logs/`,

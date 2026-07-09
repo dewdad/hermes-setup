@@ -1,5 +1,16 @@
 # hermes-setup
 
+<!-- AGENT-INSTALL:START -->
+> **AGENT INSTRUCTIONS (read first if you are an AI agent given this repo's URL and asked to set up / install a Hermes profile):**
+>
+> 1. **Fetch the catalogue:** `<REPO_RAW_BASE>/profiles.json` — where `<REPO_RAW_BASE>` is this repo's raw-content base (for GitHub, turn `https://github.com/<owner>/<repo>` into `https://raw.githubusercontent.com/<owner>/<repo>/<default-branch>`; this repo → `https://raw.githubusercontent.com/dewdad/hermes-setup/main`).
+> 2. **List & pick:** show the user the `profiles[]` entries (`name` + `description`) and ask which one.
+> 3. **Install the chosen `<name>`:** run that entry's `standalone_posix_command` (macOS/Linux) or `standalone_windows_command` (Windows), replacing `<RAW_REPO_URL>` with `<REPO_RAW_BASE>` and `<REPO_GIT_URL>` with this repo's git URL. If you are *already inside a local clone*, run `local_install_command` instead.
+> 4. **Finish:** tell the user to open the profile (`hermes -p <name>`) and run `/finish-setup`.
+>
+> `profiles.json` also carries an `agent_instructions` field with this same recipe. Do **not** run `hermes profile install` against a repo-subdirectory URL — it only accepts a repo ROOT or a LOCAL folder; the standalone command clones for you. Full details: [For an AI agent pointed at this repo](#for-an-ai-agent-pointed-at-this-repo).
+<!-- AGENT-INSTALL:END -->
+
 A **template compiler** for [Hermes Agent](https://hermes-agent.nousresearch.com/docs) by Nous Research. Author personas as layered declarative templates, compile them into native Hermes **profile distributions**, and apply them anywhere Hermes runs.
 
 This repo is *not* an installer. Hermes' own `hermes profile install/update` handles apply, updates, env-var checks, secret hygiene, and skill security scanning — we don't reinvent that.

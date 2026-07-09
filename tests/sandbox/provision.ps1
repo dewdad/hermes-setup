@@ -20,7 +20,10 @@
 [CmdletBinding()]
 param(
   [string]$RepoRoot = 'C:\hermes-setup',   # repo root, mapped read-only into the sandbox
-  [string]$Template = 'general'
+  [string]$Template = 'general',
+  [string]$LogDir = '',                    # writable host-mapped log folder (run-sandbox.ps1 -LogDir); repo stays read-only
+  [string]$PersistRoot = '',               # writable host-mapped persist folder (run-sandbox.ps1 -PersistHome); reuses the install across runs (NOT blank-slate)
+  [switch]$ResetState                      # persist mode only: wipe mutable state to the post-install baseline each run (else the persisted home accumulates a "dirty" state)
 )
 
 function Ok($m)   { Write-Host "  [PASS] $m" -ForegroundColor Green }
@@ -29,6 +32,16 @@ function Fail($m) { Write-Host "  [FAIL] $m" -ForegroundColor Red; $script:Failu
 function Step($m) { Write-Host "`n==> $m" -ForegroundColor Cyan }
 $script:Failures = 0
 
+# ---- host-visible logging (optional; repo stays read-only, only $LogDir is writable) -----------
+$script:Transcribing = $false
+if ($LogDir -and (Test-Path $LogDir)) {
+  try {
+    Start-Transcript -LiteralPath (Join-Path $LogDir 'provision.log') -Force -ErrorAction Stop | Out-Null
+    $script:Transcribing = $true
+  } catch { Write-Warning "could not start transcript in ${LogDir}: $_" }
+}
+
+try {
 $Dist = Join-Path $RepoRoot "dist\$Template"
 Step "blank-slate sandbox E2E — template '$Template'"
 Write-Host "    repo (read-only): $RepoRoot"
@@ -38,9 +51,36 @@ if (-not (Test-Path (Join-Path $Dist 'distribution.yaml'))) {
   Write-Host "`nCannot continue." -ForegroundColor Red; return
 }
 
+# ---- optional persistence (DEV fast re-runs; NOT blank-slate) ---------------
+# When run-sandbox.ps1 -PersistHome maps a persistent writable folder as $PersistRoot, relocate
+# HERMES_HOME + the Playwright browser cache + the Desktop-app dir under it so the ~15-min install
+# (CLI toolchain + Playwright + Hermes-Setup.exe) is paid once and REUSED across runs — install.ps1
+# honors $env:HERMES_HOME. Blank-slate runs pass no PersistRoot and keep %LOCALAPPDATA%\hermes.
+if ($PersistRoot) {
+  $env:HERMES_HOME = Join-Path $PersistRoot 'hermes-home'
+  $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $PersistRoot 'ms-playwright'
+  New-Item -ItemType Directory -Force -Path $env:HERMES_HOME, $env:PLAYWRIGHT_BROWSERS_PATH | Out-Null
+  Write-Host "    PERSIST MODE: HERMES_HOME=$($env:HERMES_HOME) (mapped to host; install reused across runs; NOT blank-slate)"
+}
+$hermesHome = if ($env:HERMES_HOME) { $env:HERMES_HOME } else { Join-Path $env:LOCALAPPDATA 'hermes' }
+$profRoot   = Join-Path $hermesHome "profiles\$Template"
+$desktopDir = if ($PersistRoot) { Join-Path $PersistRoot 'hermes-desktop' } else { '' }
+
 # ---- 1. Fresh Hermes install ------------------------------------------------
 Step "install Hermes (fresh, native Windows)"
 function Resolve-Hermes {
+  # Persist mode ($env:HERMES_HOME set): the install lives UNDER HERMES_HOME. Resolve it there ONLY —
+  # never accept a stray hermes.exe from PATH or the default %LOCALAPPDATA%\hermes, which would desync
+  # $profRoot (derived from $hermesHome) and make the reuse/reset/skip checks target the wrong home.
+  if ($env:HERMES_HOME) {
+    foreach ($p in @(
+      (Join-Path $env:HERMES_HOME 'hermes-agent\venv\Scripts\hermes.exe'),
+      (Join-Path $env:HERMES_HOME 'bin\hermes.exe'))) {
+      if (Test-Path $p) { return $p }
+    }
+    return $null   # first persisted run: nothing yet — installer (honoring $env:HERMES_HOME) creates it
+  }
+  # Default (blank-slate) mode: PATH first, then the standard location.
   $c = (Get-Command hermes -ErrorAction SilentlyContinue).Source
   if ($c) { return $c }
   foreach ($p in @(
@@ -69,12 +109,40 @@ if (-not $hermes) {
 if (-not $hermes) { Fail "hermes CLI not found after install"; return }
 Ok "hermes present: $hermes"
 
+# ---- 1b. reset-to-baseline (persist mode, opt-in) ---------------------------
+# -ResetState wipes the MUTABLE Hermes state so a persisted run starts from the post-install baseline
+# (fresh profile reinstalled from the mapped dist + no session/log/memory clutter) while KEEPING the
+# expensive install (toolchain, venv, Node, Playwright, Desktop app). Omit it to let the persisted
+# home accumulate a lived-in "dirty" state on purpose — e.g. to test how a hermes-setup distribution
+# update (version bump) lands on an existing user via `hermes profile update`.
+if ($ResetState) {
+  Step "reset-to-baseline (persist mode): wiping mutable state, keeping the install"
+  if (Test-Path (Join-Path $profRoot 'config.yaml')) {
+    & $hermes profile delete $Template --yes 2>&1 | Out-Null   # step 2 then reinstalls it pristine from the mapped dist
+    if (Test-Path (Join-Path $profRoot 'config.yaml')) { Remove-Item -LiteralPath $profRoot -Recurse -Force -ErrorAction SilentlyContinue }
+  }
+  foreach ($d in @('sessions', 'logs', 'memories')) {
+    $dir = Join-Path $hermesHome $d
+    if (Test-Path $dir) { Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue }
+  }
+  Ok "reset done — profile reinstalled fresh + sessions/logs/memories cleared (install, caches, and any .env keys are preserved)"
+} elseif ($PersistRoot) {
+  Write-Host "    (persist mode, NO -ResetState: mutable state ACCUMULATES across runs — good for update/version-bump impact testing)"
+}
+
 # ---- 2. Install the distribution (blank slate: no keys, no prior profiles) --
 Step "install the '$Template' distribution (one step, from the mapped folder)"
-& $hermes profile install $Dist --name $Template --yes
-if ($LASTEXITCODE -ne 0) { Fail "profile install failed"; return }
-Ok "installed profile '$Template'"
-$profRoot = Join-Path $env:LOCALAPPDATA "hermes\profiles\$Template"
+if (Test-Path (Join-Path $profRoot 'config.yaml')) {
+  # Persisted (dirty) run: bring the existing profile up to the CURRENT mapped dist before asserting,
+  # so the checks test today's code — and so this doubles as the "version-bump lands on an existing
+  # user" test. (-ResetState already deleted the profile in step 1b, so it takes the else branch.)
+  & $hermes profile update $Template --yes 2>&1 | Out-Null
+  Ok "profile '$Template' already present (persisted) — updated from the mapped dist to test current code"
+} else {
+  & $hermes profile install $Dist --name $Template --yes
+  if ($LASTEXITCODE -ne 0) { Fail "profile install failed"; return }
+  Ok "installed profile '$Template'"
+}
 
 # ---- 3. Meta-skill carve-out + /finish-setup registration -------------------
 Step "meta-skill (/finish-setup carve-out)"
@@ -87,11 +155,13 @@ else { Fail "/finish-setup not registered (skills list has no finish-setup)" }
 
 # ---- 4. config check clean, keyless -----------------------------------------
 Step "config check (no keys set)"
+# NOTE: 'unknown key' is intentionally NOT a failure — the project contract (root AGENTS.md, config
+# schema) is that Hermes v0.18.x WARNS (not fails) on unknown config keys like image_gen/tts.
 $check = (& $hermes -p $Template config check 2>&1 | Out-String)
-if (($check -split "`n") | Where-Object { $_ -match '(?i)\berror\b|invalid|unknown key|✗|✘' }) {
-  ($check -split "`n") | Where-Object { $_ -match '(?i)\berror\b|invalid|unknown key|✗|✘' } | ForEach-Object { Write-Host "      $_" -ForegroundColor Red }
+if (($check -split "`n") | Where-Object { $_ -match '(?i)\berror\b|invalid|✗|✘' }) {
+  ($check -split "`n") | Where-Object { $_ -match '(?i)\berror\b|invalid|✗|✘' } | ForEach-Object { Write-Host "      $_" -ForegroundColor Red }
   Fail "config check reported errors"
-} else { Ok "config check clean (missing provider keys are optional/tolerated)" }
+} else { Ok "config check clean (missing provider keys + unknown-key warnings are tolerated)" }
 
 # ---- 5. Tier-0 chat: the free chain needs ONE free-tier key / Nous OAuth ----
 # An HTTP 4xx / "no permission" body is an AUTH error surfaced as the reply, NOT a real answer, and
@@ -122,6 +192,77 @@ else { Fail "update DELETED a user-installed skill — G1 regression: distributi
 if (Test-Path (Join-Path $profRoot 'meta-skills\finish-setup\SKILL.md')) { Ok "finish-setup meta-skill refreshed across update" }
 else { Fail "update dropped the finish-setup meta-skill" }
 
+# ---- 8. Hermes DESKTOP prerequisite: Edge WebView2 Runtime (for Part B) ------
+# Windows Sandbox ships WITHOUT the Evergreen WebView2 Runtime, so the Hermes Desktop installer
+# aborts with "WebView2 not found". Pre-provision it here (silent) so Part B's GUI launches with no
+# extra download. Network-tolerant (WARN, not FAIL — Part A is CLI-only) and idempotent.
+Step "Hermes Desktop prerequisite: Edge WebView2 Runtime (Part B)"
+function Get-WebView2Version {
+  foreach ($k in @(
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+    'HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+    'HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}')) {
+    $pv = (Get-ItemProperty -Path $k -Name pv -ErrorAction SilentlyContinue).pv
+    if ($pv -and $pv -ne '0.0.0.0') { return $pv }
+  }
+  return $null
+}
+$wv = Get-WebView2Version
+if ($wv) { Ok "WebView2 Runtime already present (pv $wv)" }
+else {
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $boot = Join-Path $env:TEMP 'MicrosoftEdgeWebview2Setup.exe'
+    Write-Host "    downloading the Evergreen WebView2 bootstrapper (official go.microsoft.com link)..."
+    Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $boot -UseBasicParsing
+    $proc = Start-Process -FilePath $boot -ArgumentList '/silent','/install' -PassThru -Wait
+    $wv = Get-WebView2Version
+    if ($wv) { Ok "WebView2 Runtime installed (pv $wv) — Hermes Desktop will launch in Part B" }
+    else { Warn "WebView2 setup exited ($($proc.ExitCode)) but runtime not detected — Part B Desktop may still prompt to install it" }
+  } catch { Warn "could not pre-provision WebView2 (network?): $_ — install it in Part B if the Desktop installer asks" }
+}
+
+# ---- 9. Hermes DESKTOP app — install the layman way (Hermes-Setup.exe /S) ----
+# The signed Tauri v2 / NSIS bootstrap installer. `/S` is the NSIS silent switch (no GUI), so Part B
+# shrinks to "launch Hermes and onboard" — no browser download and no installer click-through in the
+# VM's clipboard-less, scaled display. Hermes-Setup.exe also bundles the WebView2 bootstrapper
+# (embedBootstrapper) and skips it when the runtime is already present, so step 8 just speeds it up.
+# Network/path-tolerant: WARN (not FAIL) — Part A's contract is the CLI, and the NSIS install path is
+# not officially documented (verified empirically in the sandbox instead of assumed).
+Step "Hermes Desktop app (layman path: Hermes-Setup.exe /S)"
+$desktopExe = $null
+if ($desktopDir -and (Test-Path $desktopDir)) {
+  $desktopExe = Get-ChildItem -Path $desktopDir -Recurse -Filter 'Hermes*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+}
+if ($desktopExe) {
+  Ok "Hermes Desktop already installed (persisted): $($desktopExe.FullName)"
+} else {
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $setup = Join-Path $env:TEMP 'Hermes-Setup.exe'
+    Write-Host "    downloading Hermes-Setup.exe (signed Tauri bootstrap installer, ~7 MB)..."
+    Invoke-WebRequest -Uri 'https://hermes-assets.nousresearch.com/Hermes-Setup.exe' -OutFile $setup -UseBasicParsing
+    $sArgs = @('/S'); if ($desktopDir) { $sArgs += "/D=$desktopDir" }   # NSIS: /D must be the LAST arg, unquoted
+    Write-Host "    running silent install: Hermes-Setup.exe $($sArgs -join ' ') ..."
+    $proc = Start-Process -FilePath $setup -ArgumentList $sArgs -PassThru
+    # Guard against a silent installer that never returns: wait up to 12 min, then continue. The VM
+    # is disposable, so a still-running installer must NOT block Part A's summary / DONE.txt.
+    Wait-Process -Id $proc.Id -Timeout 720 -ErrorAction SilentlyContinue
+    $exited = $proc.HasExited
+    Start-Sleep -Seconds 3
+    $startMenus = @(
+      (Join-Path $env:APPDATA     'Microsoft\Windows\Start Menu\Programs'),
+      (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs')) | Where-Object { Test-Path $_ }
+    $landed = $null
+    if ($startMenus) { $landed = Get-ChildItem -Path $startMenus -Recurse -Filter '*Hermes*.lnk' -ErrorAction SilentlyContinue | Select-Object -First 1 }
+    if (-not $landed -and $desktopDir -and (Test-Path $desktopDir)) { $landed = Get-ChildItem -Path $desktopDir -Recurse -Filter 'Hermes*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1 }
+    if (-not $exited)                          { Warn "Hermes-Setup.exe /S still running after 12 min — continuing; finish/verify it in the VM (Part B)" }
+    elseif ($proc.ExitCode -eq 0 -and $landed) { Ok "Hermes Desktop installed silently ($([IO.Path]::GetFileName($landed.FullName)))" }
+    elseif ($proc.ExitCode -eq 0)              { Warn "Hermes-Setup.exe /S exited 0 but no Hermes shortcut/exe found in the usual spots — launch it in Part B" }
+    else                                       { Warn "Hermes-Setup.exe /S exited $($proc.ExitCode) — desktop install may be incomplete; run it manually in Part B" }
+  } catch { Warn "could not download/run Hermes-Setup.exe (network?): $_ — download+run it manually in Part B" }
+}
+
 # ---- summary + manual Part B ------------------------------------------------
 Step "SUMMARY (Part A - automated, CLI)"
 if ($script:Failures -eq 0) { Write-Host "`n  ALL AUTOMATED CHECKS PASSED." -ForegroundColor Green }
@@ -133,14 +274,15 @@ $partB = @(
   $rule,
   'Part B - Hermes DESKTOP GUI (manual, still inside this disposable sandbox)',
   $rule,
-  '  1. Download Hermes Desktop:  https://hermes-agent.nousresearch.com/',
-  '  2. Install and launch it.',
-  "  3. Import / install the profile from:  $Dist",
+  '  (Hermes Desktop + the Edge WebView2 Runtime were already installed above via Hermes-Setup.exe /S.)',
+  '  1. Launch "Hermes" from the Start Menu (no browser download, no installer click-through needed).',
+  '     If a first-launch setup runs, let it finish - it provisions the desktop runtime for you.',
+  "  2. Import / install the profile from:  $Dist",
   "     (or select the '$Template' profile already installed above).",
-  '  4. Run  /finish-setup  in the Desktop chat -> set ONE free provider key (or run hermes auth),',
+  '  3. Run  /finish-setup  in the Desktop chat -> set ONE free provider key (or run hermes auth),',
   '     and confirm it renders the tiered setup flow (the one chat key, Tier-0 vs Tier-1 skills,',
   '     discover-more catalogues).',
-  '  5. Send a hello message -> after that one key/sign-in, free chat replies. (Web search + browser',
+  '  4. Send a hello message -> after that one key/sign-in, free chat replies. (Web search + browser',
   '     automation work even before you add the key.)',
   '',
   'When finished, just CLOSE the Sandbox window. Everything here - Hermes, the profile,',
@@ -148,3 +290,19 @@ $partB = @(
   $rule
 )
 Write-Host ($partB -join "`n") -ForegroundColor White
+}
+finally {
+  # Machine-readable completion marker + transcript flush so the host (and an orchestrating agent)
+  # can read the real result WITHOUT touching the VM. Runs even on an early `return` above —
+  # finally always executes when leaving the try, including via return.
+  if ($LogDir -and (Test-Path $LogDir)) {
+    try {
+      @(
+        "failures=$script:Failures",
+        "template=$Template",
+        "timestamp=$(Get-Date -Format o)"
+      ) -join "`n" | Set-Content -LiteralPath (Join-Path $LogDir 'DONE.txt') -Encoding UTF8
+    } catch { Write-Warning "could not write DONE.txt: $_" }
+  }
+  if ($script:Transcribing) { try { Stop-Transcript | Out-Null } catch {} }
+}

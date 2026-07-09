@@ -33,11 +33,57 @@ deterministic emit) and must never damage the developer's live Hermes install.
 - **Blank-slate Desktop E2E (`tests/sandbox/`)** — the layman/Desktop path (Feature 5, gates G9/G10)
   is tested in **Windows Sandbox**, a disposable VM. `run-sandbox.ps1` (host launcher) maps the repo
   **read-only** and auto-runs `provision.ps1` inside the sandbox: fresh Hermes install, install the
-  compiled distribution, then the same Tier-0 + `/finish-setup` + G1 assertions on a pristine home;
+  compiled distribution, then the same Tier-0 + `/finish-setup` + G1 assertions on a pristine home,
+  then silently pre-provisions the Edge **WebView2 Runtime** (Windows Sandbox ships without it, and
+  the Hermes Desktop hard-requires it), and finally installs **Hermes Desktop the layman way** by
+  downloading the signed Tauri/NSIS bootstrap installer `Hermes-Setup.exe` and running it silently
+  (`/S`) — so the manual Part B is reduced to launching the pre-installed app and onboarding (no
+  browser download, no installer click-through in the VM). Both the WebView2 and Hermes-Setup.exe
+  steps are network-tolerant (WARN, not FAIL — Part A's contract is the CLI) and idempotent;
   `PLAYBOOK.md` adds the manual Desktop-GUI steps. **This is the ONE harness exempt from the
   `cfgtest-*` / never-`default` naming rule** — its isolation is stronger (a whole throwaway OS with
   the host mapped read-only), so `provision.ps1` may install a profile named `general` and needs no
   teardown. It MUST run only inside Windows Sandbox; never run `provision.ps1` on the host.
+  - **Hands-off host-log capture (default).** So the run needs **zero typing inside the VM** (no
+    clipboard, no fighting the VM display), `run-sandbox.ps1` maps ONE extra, **log-only** host
+    folder **writable** (`$LogDirHost` → `C:\hermes-logs`) and the logon command auto-runs
+    `provision.ps1 -LogDir C:\hermes-logs` after a short settle delay. `provision.ps1` tees all
+    output to `<LogDir>\provision.log` and writes `<LogDir>\DONE.txt` (`failures=N`) in a `finally`,
+    so the host launcher tails the log and prints the real PASS/FAIL without touching the VM. **This
+    does not weaken isolation:** the **repo mapping stays READ-ONLY**, `%LOCALAPPDATA%\hermes` is
+    never mapped, and the only writable mount is a dedicated, throwaway log directory. `-NoLog`
+    restores the strictly-read-only (results-visible-only-in-VM) behavior; `-NoWait` launches without
+    tailing. The static `hermes-blank.wsb` fallback remains manual (`-File`, no host log).
+  - **`-PersistHome` — DEV fast-iteration mode (opt-in; NOT blank-slate).** The full install (CLI
+    toolchain + WebView2 + `Hermes-Setup.exe /S`) costs ~15 min; paying it every iteration is
+    untenable. `-PersistHome` maps a SECOND writable host folder
+    (`%LOCALAPPDATA%\hermes-sandbox-persist\<template>` → `C:\hermes-persist`) and passes
+    `provision.ps1 -PersistRoot C:\hermes-persist`, which relocates **HERMES_HOME**, the **Playwright
+    browser cache** (`PLAYWRIGHT_BROWSERS_PATH`), and the **Desktop-app dir** (`Hermes-Setup.exe
+    /D=`) under it. First run installs into that persisted store; later runs **detect and reuse it**
+    (`Resolve-Hermes` prefers `$env:HERMES_HOME`; step 2 skips an existing profile; step 9 skips an
+    existing desktop exe) — seconds to a working env. Windows Sandbox itself CANNOT snapshot/save
+    state; this mapped-folder persistence is the substitute (WebView2 still re-runs each time — it is
+    registry/system state that does not persist, but it is cheap + idempotent). **This deliberately
+    carries state across runs, so it is NOT the pristine G9/G10 gate** — the default
+    (PersistHome-off) run remains the blank-slate gate; `-PersistHome` is only for iterating on
+    Part B. Delete the host persist folder to reset to a clean slate. A true frozen-OS image
+    (files + registry + shortcuts + WebView2) is a **Hyper-V checkpoint** job — see the Option B
+    scaffold `hyperv-checkpoint.ps1` (provision a VM once → `-Action Checkpoint` → `-Action Run`
+    reverts to the frozen post-install OS in seconds; needs a one-time manual VM setup, not yet run
+    end-to-end).
+  - **Dirty (default) vs `-ResetState`.** `-PersistHome` alone keeps a **lived-in "dirty" home**:
+    mutable state (`sessions/`, `logs/`, `memories/`, the step-7 sentinel skill, the step-6 skill,
+    profile drift) **accumulates** across runs — intentional, for testing how a distribution
+    **update / version bump** lands on an existing user via `hermes profile update`. Adding
+    `-ResetState` (run-sandbox.ps1 → `provision.ps1 -ResetState`) instead deletes+reinstalls the
+    profile pristine from the mapped dist and clears `sessions/`/`logs/`/`memories/` **before** the
+    checks — a fresh post-install slate each run while keeping the expensive install. `-ResetState`
+    is a no-op without `-PersistHome` (a non-persist run is already a fresh VM every time).
+  - **step 9 hardening** — `Hermes-Setup.exe /S` is a long (~8 min) real install that has been
+    observed NOT to return promptly; step 9 launches it with `-PassThru` + `Wait-Process -Timeout 720`
+    (12 min) rather than a bare `-Wait`, so a hung/slow installer can never block Part A's
+    summary/`DONE.txt`.
 - **Blank-slate CLI E2E (`tests/blank-home/`)** — the fast, headless, cross-platform counterpart to
   the sandbox: `run-blank-home.ps1` / `run-blank-home.sh` relocate `HERMES_HOME` to a **throwaway
   temp dir** (a genuine brand-new-user state) and run the same Tier-0 + `/finish-setup` + G1

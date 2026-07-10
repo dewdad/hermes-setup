@@ -146,6 +146,59 @@ effect without `-PersistHome`; a normal run is already a fresh VM every time.)
 
 ---
 
+## Even faster (CLI-only) — `-HostHermes` (map the host install; NOT a blank slate)
+
+`-PersistHome` still pays the ~15-min install **once**, and that first install writes the whole
+toolchain into a slow Sandbox mapped folder (it can stall on the `hermes-agent` clone). `-HostHermes`
+skips the install entirely: it maps the **host's already-installed Hermes CLI** into the VM at
+**identical absolute paths, read-only**, and just puts its `venv\Scripts` on `PATH` — a working
+`hermes` in **seconds**, no download.
+
+```powershell
+pwsh -File tests/sandbox/run-sandbox.ps1 -Template il-therapist -HostHermes
+```
+
+- **What it maps (read-only, at identical paths):** the install dir `HERMES_HOME\hermes-agent` **and**
+  the venv's base uv Python (`pyvenv.cfg` `home` — `python311.dll` + stdlib). The venv is **not**
+  self-contained and its `.exe` launchers bake in absolute paths, so both must appear at their exact
+  host paths for it to run.
+- **Host-safe:** it maps only the secret-free **`hermes-agent` subfolder** — the parent `HERMES_HOME`
+  (`.env`, `auth.json`, `config.yaml`, keys) is **never** mapped. `HERMES_HOME` inside the VM stays a
+  **fresh VM-local dir**, so no host state is read or written, and the mapping is **read-only** so the
+  VM can't modify your real install. (`PYTHONDONTWRITEBYTECODE=1` keeps Python from trying to write
+  `.pyc` into the read-only tree.)
+- **CLI-only by default:** the Desktop-app steps (WebView2 + `Hermes-Setup.exe`, steps 8–9) are
+  **skipped**. This proves the **CLI** (`config check`, `skills list`/`finish-setup`, keyless-chat
+  probe, G1) runs from the mapped install. **Add `-Desktop`** (below) to also launch the GUI.
+
+### `-Desktop` — provision WebView2 + launch the native Electron app (`hermes desktop`)
+
+Add `-Desktop` to end with a **running Hermes Desktop GUI** inside the VM, using the mapped CLI:
+
+```powershell
+pwsh -File tests/sandbox/run-sandbox.ps1 -Template il-therapist -HostHermes -Desktop
+```
+
+- Provisions the **Edge WebView2 Runtime** (step 8, as requested), then runs **`hermes desktop`**
+  (step 9, replacing the `Hermes-Setup.exe` download). `hermes desktop` is the native **Electron** app
+  under `apps/desktop`.
+- Under `-HostHermes` the host's **prebuilt** app (`apps/desktop/release/win-unpacked/Hermes.exe`) is
+  mapped in read-only, so `-Desktop` passes **`--skip-build`** — it just **launches**, no `npm install`,
+  no build, no write into the read-only tree (Electron writes its userData under `HERMES_HOME`/`%APPDATA%`).
+- The app is launched **non-blocking**, so provisioning finishes (writes `DONE.txt`) while the GUI stays
+  up; the `-NoExit` logon shell keeps the VM window alive. **Leave the VM open to use the Desktop.**
+- Without `-HostHermes`, `-Desktop` runs a full `hermes desktop` (build from source — needs Node + the
+  npm registry; slower) against a writable fresh install.
+- Still **not** the blank-slate G9/G10 gate — it reuses the host's prebuilt app.
+- **Not the gate:** like `-PersistHome`, a mapped host install is a dev optimization, **not** the
+  pristine **G9/G10** blank-slate gate (it reuses the host's install rather than proving the fresh
+  layman install path).
+- **Caveat:** the host has no portable `git`/`node` under its Hermes home (it used system ones during
+  install), so a Tier-0 skill install that needs them may `[WARN]` — tolerated; core CLI + chat don't
+  need them.
+
+---
+
 ## Pass criteria (overall)
 
 - **Part A:** rows 1-4, 6, 7 all `[PASS]`; row 5 is a `[WARN]` by design (keyless chat returns HTTP 403 — free chat needs one key). Set one free key and re-run to see chat succeed.
@@ -167,7 +220,7 @@ effect without `-PersistHome`; a normal run is already a fresh VM every time.)
 
 ## Files
 
-- `run-sandbox.ps1` — host launcher: preflight, generate `.wsb` (repo read-only + one writable log-only mount), launch, and stream the host log to completion. Flags: `-GenerateOnly` (validate without launching), `-NoWait` (launch without streaming), `-NoLog` (strict read-only, no host log), `-PersistHome` (fast dev re-runs, **not** blank-slate — see "Fast dev iteration" above), `-ResetState` (with `-PersistHome`: fresh post-install slate each run instead of an accumulating "dirty" home).
+- `run-sandbox.ps1` — host launcher: preflight, generate `.wsb` (repo read-only + one writable log-only mount), launch, and stream the host log to completion. Flags: `-GenerateOnly` (validate without launching), `-NoWait` (launch without streaming), `-NoLog` (strict read-only, no host log), `-PersistHome` (fast dev re-runs, **not** blank-slate — see "Fast dev iteration" above), `-ResetState` (with `-PersistHome`: fresh post-install slate each run instead of an accumulating "dirty" home), `-HostHermes` (CLI-only: map the host's installed CLI read-only instead of installing — seconds to a working `hermes`; **not** blank-slate; Desktop steps skipped — see "Even faster (CLI-only)" above), `-Desktop` (provision WebView2 + launch the native Electron app via `hermes desktop`; with `-HostHermes` it `--skip-build`-launches the host's prebuilt app and leaves the VM running with the GUI up — see "`-Desktop`" above).
 - `provision.ps1` — runs inside the sandbox: install + assertions (Part A). Takes `-LogDir` to tee output + write `DONE.txt` to the writable log mount, `-PersistRoot` to reuse a persisted HERMES_HOME/cache/desktop across runs, and `-ResetState` to wipe mutable state to the post-install baseline each persisted run. Never run on the host.
 - `hermes-blank.wsb` — static reference config (edit `__REPO_ROOT__`) if you prefer double-clicking over the launcher (manual fallback: `-File`, no host log stream).
 - `hyperv-checkpoint.ps1` — **Option B (scaffold):** the heavier, TRUE-saved-state alternative. Wraps Hyper-V checkpoint/revert around a VM you provision once, so each revert is a byte-identical post-install OS. Requires a one-time manual VM setup (your Windows ISO/license); not yet run end-to-end here.

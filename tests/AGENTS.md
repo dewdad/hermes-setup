@@ -84,6 +84,28 @@ deterministic emit) and must never damage the developer's live Hermes install.
     observed NOT to return promptly; step 9 launches it with `-PassThru` + `Wait-Process -Timeout 720`
     (12 min) rather than a bare `-Wait`, so a hung/slow installer can never block Part A's
     summary/`DONE.txt`.
+  - **`-HostHermes` — DEV fast mode (CLI-only; NOT blank-slate).** Skips the ~15-min fresh install by
+    mapping the HOST's already-installed Hermes CLI into the VM at IDENTICAL absolute paths, READ-ONLY,
+    and putting its `venv\Scripts` on `PATH` — a working `hermes` in seconds. The venv is not
+    self-contained, so `run-sandbox.ps1 -HostHermes` maps BOTH the install dir
+    (`HERMES_HOME\hermes-agent`, a secret-free SUBFOLDER — the parent home with
+    `.env`/`auth.json`/`config.yaml` is NEVER mapped) and the venv's base uv Python (`pyvenv.cfg`
+    `home` — `python311.dll` + stdlib), because the `.exe` launchers bake in absolute paths.
+    `provision.ps1 -HostHermes -HostInstallDir <dir>` sets `PYTHONDONTWRITEBYTECODE=1` (read-only tree)
+    and resolves `hermes` from the map instead of installing; `HERMES_HOME` stays a FRESH VM-local dir
+    so no host state is read or written. By default the Desktop steps (8/9) are SKIPPED — it proves the
+    CLI, not the GUI. Like `-PersistHome`, it is a dev optimization, NOT the pristine G9/G10 gate.
+  - **`-Desktop` — provision WebView2 + launch the native Electron app.** Provisions the WebView2
+    Runtime (step 8) then replaces the `Hermes-Setup.exe` download (step 9) with `hermes desktop`, the
+    native Electron app under `apps/desktop`. Combined with `-HostHermes` it passes `--skip-build` to
+    launch the host's PREBUILT app (`apps/desktop/release/win-unpacked/Hermes.exe`, mapped read-only) —
+    no `npm install`, no build, no write into the read-only tree (Electron writes userData under
+    `HERMES_HOME`/`%APPDATA%`). The app is launched NON-BLOCKING so `provision.ps1` finishes + writes
+    `DONE.txt` while the GUI stays up (the `-NoExit` logon shell keeps the VM alive). Also NOT the
+    blank-slate gate — it reuses the host's prebuilt app. **Operational note:** never force-kill the
+    WindowsSandbox client/server to close a run — that ORPHANS the utility VM (`vmmemWindowsSandbox` +
+    `vmwp`), which holds the mapped log folder and blocks the next launch; close the VM window
+    gracefully instead.
 - **Blank-slate CLI E2E (`tests/blank-home/`)** — the fast, headless, cross-platform counterpart to
   the sandbox: `run-blank-home.ps1` / `run-blank-home.sh` relocate `HERMES_HOME` to a **throwaway
   temp dir** (a genuine brand-new-user state) and run the same Tier-0 + `/finish-setup` + G1

@@ -23,7 +23,10 @@ param(
   [string]$Template = 'general',
   [string]$LogDir = '',                    # writable host-mapped log folder (run-sandbox.ps1 -LogDir); repo stays read-only
   [string]$PersistRoot = '',               # writable host-mapped persist folder (run-sandbox.ps1 -PersistHome); reuses the install across runs (NOT blank-slate)
-  [switch]$ResetState                      # persist mode only: wipe mutable state to the post-install baseline each run (else the persisted home accumulates a "dirty" state)
+  [switch]$ResetState,                     # persist mode only: wipe mutable state to the post-install baseline each run (else the persisted home accumulates a "dirty" state)
+  [switch]$HostHermes,                     # DEV fast mode (run-sandbox.ps1 -HostHermes): use the host CLI mapped RO at $HostInstallDir instead of a fresh install; CLI-only, NOT blank-slate
+  [string]$HostInstallDir = '',            # identical-path RO mapping of the host's HERMES_HOME\hermes-agent (venv\Scripts\hermes.exe); PATH-injected, install step skipped
+  [switch]$Desktop                         # provision + LAUNCH the native Electron Desktop via `hermes desktop` (adds --skip-build under -HostHermes, which maps a prebuilt app); leaves the VM running with the GUI up
 )
 
 function Ok($m)   { Write-Host "  [PASS] $m" -ForegroundColor Green }
@@ -69,9 +72,34 @@ $ResolvedHome = if ($env:HERMES_HOME) { $env:HERMES_HOME } else { Join-Path $env
 $profRoot     = Join-Path $ResolvedHome "profiles\$Template"
 $desktopDir = if ($PersistRoot) { Join-Path $PersistRoot 'hermes-desktop' } else { '' }
 
+# ---- 0. HOST-HERMES fast mode (CLI-only; NOT blank-slate) -------------------
+# run-sandbox.ps1 -HostHermes maps the host's already-installed hermes-agent (+ its base uv Python)
+# into the VM at IDENTICAL absolute paths, READ-ONLY. We just put its venv\Scripts on PATH and skip the
+# ~15-min fresh install. The install tree is READ-ONLY, so tell Python not to write .pyc into it.
+# HERMES_HOME stays the FRESH VM-local dir computed above (never the mapped host home) — no host state
+# is read or written. Desktop steps (8/9) are skipped: this proves the CLI, not the GUI.
+if ($HostHermes) {
+  Step "HOST-HERMES fast mode (mapped host CLI; CLI-only; NOT blank-slate)"
+  $hostHermesExe = Join-Path $HostInstallDir 'venv\Scripts\hermes.exe'
+  if (-not $HostInstallDir -or -not (Test-Path $hostHermesExe)) {
+    Fail "HOST-HERMES: mapped install not found at '$HostInstallDir' (expected venv\Scripts\hermes.exe). Was the host mapping created by run-sandbox.ps1 -HostHermes?"
+    return
+  }
+  $env:PYTHONDONTWRITEBYTECODE = '1'
+  $env:PATH = (Join-Path $HostInstallDir 'venv\Scripts') + ';' + $env:PATH
+  Ok "using mapped host install (read-only): $HostInstallDir"
+  Write-Host "    HERMES_HOME (fresh, VM-local): $ResolvedHome"
+}
+
 # ---- 1. Fresh Hermes install ------------------------------------------------
 Step "install Hermes (fresh, native Windows)"
 function Resolve-Hermes {
+  # HOST-HERMES mode: the CLI is the RO-mapped host install; resolve it there FIRST, regardless of
+  # HERMES_HOME, so we never trigger a (pointless, read-only) fresh install.
+  if ($HostHermes -and $HostInstallDir) {
+    $hp = Join-Path $HostInstallDir 'venv\Scripts\hermes.exe'
+    if (Test-Path $hp) { return $hp }
+  }
   # Persist mode ($env:HERMES_HOME set): the install lives UNDER HERMES_HOME. Resolve it there ONLY —
   # never accept a stray hermes.exe from PATH or the default %LOCALAPPDATA%\hermes, which would desync
   # $profRoot (derived from $ResolvedHome) and make the reuse/reset/skip checks target the wrong home.
@@ -195,6 +223,15 @@ else { Fail "update DELETED a user-installed skill — G1 regression: distributi
 if (Test-Path (Join-Path $profRoot 'meta-skills\finish-setup\SKILL.md')) { Ok "finish-setup meta-skill refreshed across update" }
 else { Fail "update dropped the finish-setup meta-skill" }
 
+# ---- 8+9. Hermes DESKTOP app (Part B prep) --------------------------------------------------
+# Skipped ONLY in the pure HOST-HERMES CLI-only run (no -Desktop). With -Desktop we provision WebView2
+# (step 8) and then LAUNCH the native Electron app via `hermes desktop` (step 9, replacing the
+# Hermes-Setup.exe download), leaving the VM running with the GUI up.
+if ($HostHermes -and -not $Desktop) {
+  Step "Hermes Desktop steps (8-9) SKIPPED — HOST-HERMES is CLI-only (no -Desktop)"
+  Write-Host "    -HostHermes maps the host CLI to prove hermes runs fast; the Desktop GUI is not started."
+  Write-Host "    Add -Desktop to provision WebView2 and launch the native app via 'hermes desktop'."
+} else {
 # ---- 8. Hermes DESKTOP prerequisite: Edge WebView2 Runtime (for Part B) ------
 # Windows Sandbox ships WITHOUT the Evergreen WebView2 Runtime, so the Hermes Desktop installer
 # aborts with "WebView2 not found". Pre-provision it here (silent) so Part B's GUI launches with no
@@ -225,6 +262,29 @@ else {
   } catch { Warn "could not pre-provision WebView2 (network?): $_ — install it in Part B if the Desktop installer asks" }
 }
 
+if ($Desktop) {
+# ---- 9 (Desktop mode). Build/launch the native Electron app via `hermes desktop` -------------
+# `hermes desktop` installs workspace Node deps, builds the OS's unpacked Electron app, then launches
+# it. Under -HostHermes the host's PREBUILT app (apps/desktop/release/win-unpacked/Hermes.exe) is
+# mapped in read-only, so we pass --skip-build to launch it directly — no npm install, no write into
+# the read-only tree (Electron writes userData under HERMES_HOME/%APPDATA%, not the app dir). We launch
+# NON-BLOCKING (Start-Process, no -Wait) so provision finishes + writes DONE.txt while the GUI stays up;
+# the -NoExit logon shell keeps the VM window alive. Network/path-tolerant: WARN, never FAIL.
+$dArgs = @('desktop'); if ($HostHermes) { $dArgs += '--skip-build' }
+Step "launch Hermes Desktop (Electron): hermes $($dArgs -join ' ')"
+try {
+  $dproc = Start-Process -FilePath $hermes -ArgumentList $dArgs -PassThru -WorkingDirectory $env:TEMP
+  Write-Host "    launched (PID $($dproc.Id)); waiting up to 90s for the Electron window (Hermes.exe) to appear..."
+  $seen = $null
+  for ($i = 0; $i -lt 30 -and -not $seen; $i++) {
+    Start-Sleep -Seconds 3
+    $seen = Get-Process -Name 'Hermes' -ErrorAction SilentlyContinue | Select-Object -First 1
+  }
+  if ($seen)              { Ok "Hermes Desktop launched — Electron app running (Hermes.exe PID $($seen.Id)). Leave the VM open to use it." }
+  elseif (-not $dproc.HasExited) { Warn "hermes desktop still working after 90s (first boot/backend) — watch the VM; the window should appear shortly." }
+  else                    { Warn "hermes desktop exited ($($dproc.ExitCode)) before a window was detected — check the VM log; try 'hermes desktop' manually." }
+} catch { Warn "could not launch hermes desktop: $_ — try it manually in the VM." }
+} else {
 # ---- 9. Hermes DESKTOP app — install the layman way (Hermes-Setup.exe /S) ----
 # The signed Tauri v2 / NSIS bootstrap installer. `/S` is the NSIS silent switch (no GUI), so Part B
 # shrinks to "launch Hermes and onboard" — no browser download and no installer click-through in the
@@ -265,6 +325,8 @@ if ($desktopExe) {
     else                                       { Warn "Hermes-Setup.exe /S exited $($proc.ExitCode) — desktop install may be incomplete; run it manually in Part B" }
   } catch { Warn "could not download/run Hermes-Setup.exe (network?): $_ — download+run it manually in Part B" }
 }
+}   # end: else (non-Desktop: Hermes-Setup.exe installer path)
+}   # end: else (non-HostHermes CLI-only: Desktop steps 8+9)
 
 # ---- summary + manual Part B ------------------------------------------------
 Step "SUMMARY (Part A - automated, CLI)"
@@ -272,26 +334,62 @@ if ($script:Failures -eq 0) { Write-Host "`n  ALL AUTOMATED CHECKS PASSED." -For
 else { Write-Host "`n  $($script:Failures) CHECK(S) FAILED - see the [FAIL] lines above." -ForegroundColor Red }
 
 $rule = ('-' * 78)
-$partB = @(
-  '',
-  $rule,
-  'Part B - Hermes DESKTOP GUI (manual, still inside this disposable sandbox)',
-  $rule,
-  '  (Hermes Desktop + the Edge WebView2 Runtime were already installed above via Hermes-Setup.exe /S.)',
-  '  1. Launch "Hermes" from the Start Menu (no browser download, no installer click-through needed).',
-  '     If a first-launch setup runs, let it finish - it provisions the desktop runtime for you.',
-  "  2. Import / install the profile from:  $Dist",
-  "     (or select the '$Template' profile already installed above).",
-  '  3. Run  /finish-setup  in the Desktop chat -> set ONE free provider key (or run hermes auth),',
-  '     and confirm it renders the tiered setup flow (the one chat key, Tier-0 vs Tier-1 skills,',
-  '     discover-more catalogues).',
-  '  4. Send a hello message -> after that one key/sign-in, free chat replies. (Web search + browser',
-  '     automation work even before you add the key.)',
-  '',
-  'When finished, just CLOSE the Sandbox window. Everything here - Hermes, the profile,',
-  'any keys you typed, this entire OS - is discarded. Your real machine is untouched.',
-  $rule
-)
+if ($Desktop) {
+  $partB = @(
+    '',
+    $rule,
+    'Hermes DESKTOP launched (native Electron app) — inside this disposable sandbox',
+    $rule,
+    '  `hermes desktop` was started above; the Hermes window should be open (or opening) in this VM.',
+    "  In the app: open / select the '$Template' profile, then run  /finish-setup  in the chat to",
+    '  set ONE free provider key (or run hermes auth). Web search + browser automation work keyless.',
+    '  If no window appeared, run this in the VM terminal and watch for errors:',
+    ('    hermes desktop' + $(if ($HostHermes) { ' --skip-build' } else { '' })),
+    '',
+    'When finished, just CLOSE the Sandbox window. Everything here is discarded; your real machine',
+    'is untouched' + $(if ($HostHermes) { ' (the host install was mapped READ-ONLY).' } else { '.' }),
+    $rule
+  )
+} elseif ($HostHermes) {
+  $partB = @(
+    '',
+    $rule,
+    'HOST-HERMES (CLI-only) — try the mapped CLI, still inside this disposable sandbox',
+    $rule,
+    '  The host Hermes CLI is mapped read-only and already on PATH; no fresh install was run.',
+    '  Try it in the VM terminal:',
+    "    hermes -p $Template config check",
+    "    hermes -p $Template skills list        # /finish-setup should appear",
+    "    hermes -p $Template -z ""hello""          # chat needs ONE free key / hermes auth",
+    '  (This mode proves the CLI runs from the mapped install; the Desktop GUI was not installed.',
+    '   For the Desktop GUI, re-run run-sandbox.ps1 without -HostHermes, or with -PersistHome.)',
+    '',
+    'When finished, just CLOSE the Sandbox window. Everything here is discarded; your real machine',
+    'is untouched (the host install was mapped READ-ONLY).',
+    $rule
+  )
+} else {
+  $partB = @(
+    '',
+    $rule,
+    'Part B - Hermes DESKTOP GUI (manual, still inside this disposable sandbox)',
+    $rule,
+    '  (Hermes Desktop + the Edge WebView2 Runtime were already installed above via Hermes-Setup.exe /S.)',
+    '  1. Launch "Hermes" from the Start Menu (no browser download, no installer click-through needed).',
+    '     If a first-launch setup runs, let it finish - it provisions the desktop runtime for you.',
+    "  2. Import / install the profile from:  $Dist",
+    "     (or select the '$Template' profile already installed above).",
+    '  3. Run  /finish-setup  in the Desktop chat -> set ONE free provider key (or run hermes auth),',
+    '     and confirm it renders the tiered setup flow (the one chat key, Tier-0 vs Tier-1 skills,',
+    '     discover-more catalogues).',
+    '  4. Send a hello message -> after that one key/sign-in, free chat replies. (Web search + browser',
+    '     automation work even before you add the key.)',
+    '',
+    'When finished, just CLOSE the Sandbox window. Everything here - Hermes, the profile,',
+    'any keys you typed, this entire OS - is discarded. Your real machine is untouched.',
+    $rule
+  )
+}
 Write-Host ($partB -join "`n") -ForegroundColor White
 }
 finally {

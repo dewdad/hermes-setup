@@ -31,6 +31,17 @@
                          BASELINE while keeping the expensive install. OMIT it (the default) to let the
                          persisted home accumulate a lived-in "dirty" state — e.g. to test the impact
                          of a hermes-setup distribution update / version bump on an existing user.
+.PARAMETER HostHermes    DEV FAST MODE (CLI-only; NOT blank-slate). Instead of the ~15-min fresh
+                         install, map the HOST's already-installed Hermes CLI into the VM at IDENTICAL
+                         absolute paths, READ-ONLY, and just put its venv\Scripts on PATH — a working
+                         `hermes` in seconds. Maps two host folders: the install dir
+                         (HERMES_HOME\hermes-agent — a secret-free SUBFOLDER; the parent home with
+                         .env/auth.json/config.yaml is NEVER mapped) and the venv's base uv Python
+                         (pyvenv.cfg 'home' — python311.dll + stdlib), because the venv is not
+                         self-contained and its launchers bake in absolute paths. HERMES_HOME stays a
+                         FRESH VM-local dir (never the host's), so no host secrets/state are touched.
+                         CLI-only: the Desktop-app steps (WebView2 + Hermes-Setup.exe) are skipped.
+                         Like -PersistHome this is a dev optimization, NOT the pristine G9/G10 gate.
 
 .EXAMPLE
   pwsh -File tests/sandbox/run-sandbox.ps1
@@ -42,6 +53,16 @@
   pwsh -File tests/sandbox/run-sandbox.ps1 -NoWait          # launch, don't tail
 .EXAMPLE
   pwsh -File tests/sandbox/run-sandbox.ps1 -PersistHome     # fast dev re-runs (NOT blank-slate)
+.PARAMETER Desktop       Provision WebView2 and LAUNCH the native Electron Desktop app via
+                         `hermes desktop`, leaving the VM running with the GUI up (instead of the
+                         CLI-only stop, or the Hermes-Setup.exe installer). Combined with -HostHermes
+                         it passes --skip-build to launch the host's PREBUILT app mapped read-only —
+                         a running Desktop in ~a minute, no build, no fresh install.
+
+.EXAMPLE
+  pwsh -File tests/sandbox/run-sandbox.ps1 -Template il-therapist -HostHermes   # map host CLI (seconds, CLI-only)
+.EXAMPLE
+  pwsh -File tests/sandbox/run-sandbox.ps1 -Template il-therapist -HostHermes -Desktop   # + WebView2 + launch the Desktop GUI
 #>
 [CmdletBinding()]
 param(
@@ -50,7 +71,9 @@ param(
   [switch]$NoLog,
   [switch]$NoWait,
   [switch]$PersistHome,
-  [switch]$ResetState
+  [switch]$ResetState,
+  [switch]$HostHermes,
+  [switch]$Desktop
 )
 $ErrorActionPreference = 'Stop'
 
@@ -123,6 +146,51 @@ if ($ResetState) {
   else { Write-Warning "-ResetState ignored without -PersistHome (a blank-slate sandbox is already fresh every run)." }
 }
 
+# ---- optional mapped HOST Hermes install (DEV fast mode; CLI-only; NOT blank-slate) ----------
+# Skip the ~15-min fresh install by mapping the host's already-installed CLI into the VM at IDENTICAL
+# absolute paths, READ-ONLY. The venv is NOT self-contained (pyvenv.cfg 'home' points at the base uv
+# Python that holds python311.dll + the stdlib) and its launchers bake in absolute paths, so we map
+# BOTH the install dir and the base Python at their exact host paths. We map only the secret-free
+# 'hermes-agent' SUBFOLDER of HERMES_HOME — the parent home (.env / auth.json / config.yaml / keys) is
+# NEVER mapped, and provision.ps1 keeps HERMES_HOME a fresh VM-local dir. NOT the pristine G9/G10 gate.
+$HostArg    = ''
+$HostMapXml = ''
+if ($HostHermes) {
+  $hostHome      = if ($env:HERMES_HOME) { $env:HERMES_HOME } else { Join-Path $env:LOCALAPPDATA 'hermes' }
+  $hostInstall   = Join-Path $hostHome 'hermes-agent'
+  $hostHermesExe = Join-Path $hostInstall 'venv\Scripts\hermes.exe'
+  if (-not (Test-Path $hostHermesExe)) {
+    throw "-HostHermes: no host Hermes install at '$hostInstall' (expected venv\Scripts\hermes.exe). Install Hermes on the host first, or omit -HostHermes."
+  }
+  $pyCfg  = Join-Path $hostInstall 'venv\pyvenv.cfg'
+  $basePy = ''
+  if (Test-Path $pyCfg) {
+    $homeLine = (Get-Content -LiteralPath $pyCfg | Where-Object { $_ -match '^\s*home\s*=' } | Select-Object -First 1)
+    if ($homeLine) { $basePy = ($homeLine -replace '^\s*home\s*=\s*', '').Trim() }
+  }
+  if (-not $basePy -or -not (Test-Path $basePy)) {
+    throw "-HostHermes: could not resolve the venv base Python from '$pyCfg' (home='$basePy'). Cannot map a working install."
+  }
+  # Identical-path (SandboxFolder == HostFolder), read-only mappings so the baked-in absolute paths resolve.
+  $HostMapXml = @"
+
+    <MappedFolder>
+      <HostFolder>$(ConvertTo-XmlText $hostInstall)</HostFolder>
+      <SandboxFolder>$(ConvertTo-XmlText $hostInstall)</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+    <MappedFolder>
+      <HostFolder>$(ConvertTo-XmlText $basePy)</HostFolder>
+      <SandboxFolder>$(ConvertTo-XmlText $basePy)</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+"@
+  $HostArg = " -HostHermes -HostInstallDir '$hostInstall'"
+}
+
+# ---- optional: provision WebView2 + launch the native Electron Desktop (`hermes desktop`) ----
+$DesktopArg = if ($Desktop) { ' -Desktop' } else { '' }
+
 # ---- preflight -------------------------------------------------------------
 $distManifest = Join-Path $RepoRoot "dist\$Template\distribution.yaml"
 if (-not (Test-Path $distManifest)) {
@@ -146,10 +214,10 @@ $wsb = @"
       <HostFolder>$(ConvertTo-XmlText $RepoRoot)</HostFolder>
       <SandboxFolder>$SandboxRepo</SandboxFolder>
       <ReadOnly>true</ReadOnly>
-    </MappedFolder>$LogMapXml$PersistMapXml
+    </MappedFolder>$LogMapXml$PersistMapXml$HostMapXml
   </MappedFolders>
   <LogonCommand>
-    <Command>powershell.exe -NoExit -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 10; &amp; '$Provision' -Template $Template$LogArg$PersistArg$ResetArg"</Command>
+    <Command>powershell.exe -NoExit -ExecutionPolicy Bypass -Command "Start-Sleep -Seconds 10; &amp; '$Provision' -Template $Template$LogArg$PersistArg$ResetArg$HostArg$DesktopArg"</Command>
   </LogonCommand>
 </Configuration>
 "@
@@ -166,7 +234,16 @@ if ($PersistHome)  {
   if ($ResetState) { Write-Host "  RESET-TO-BASELINE: mutable state wiped each run (fresh post-install slate; install kept)." -ForegroundColor Yellow }
   else             { Write-Host "  DIRTY MODE: mutable state ACCUMULATES across runs (good for testing update/version-bump impact)." -ForegroundColor Yellow }
 }
-Write-Host "  logon auto-runs:  provision.ps1 -Template $Template$LogArg$PersistArg$ResetArg"
+if ($HostHermes) {
+  Write-Host "  maps (read-only): $hostInstall  ->  (same path)   (host Hermes install)" -ForegroundColor Yellow
+  Write-Host "  maps (read-only): $basePy  ->  (same path)   (venv base Python)" -ForegroundColor Yellow
+  if ($Desktop) { Write-Host "  HOST-HERMES MODE: mapped host CLI, no fresh install. NOT a blank slate." -ForegroundColor Yellow }
+  else          { Write-Host "  HOST-HERMES MODE: mapped host CLI, no fresh install (seconds). CLI-only - Desktop steps skipped. NOT a blank slate." -ForegroundColor Yellow }
+}
+if ($Desktop) {
+  Write-Host "  DESKTOP MODE: provision WebView2 + launch the native Electron app via 'hermes desktop'$(if ($HostHermes) { ' --skip-build (prebuilt, mapped)' } else { ' (builds from source)' }). VM stays running with the GUI up." -ForegroundColor Yellow
+}
+Write-Host "  logon auto-runs:  provision.ps1 -Template $Template$LogArg$PersistArg$ResetArg$HostArg$DesktopArg"
 
 if ($GenerateOnly) {
   Write-Host "`n(-GenerateOnly) not launching. Double-click the .wsb, or re-run without -GenerateOnly."

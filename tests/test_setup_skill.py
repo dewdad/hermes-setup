@@ -138,6 +138,40 @@ class ExternalOptIn(unittest.TestCase):
         self.assertNotIn("Google Workspace", text)
 
 
+class AssistantSection(unittest.TestCase):
+    _SURFACE_ENV = [
+        {"name": "TELEGRAM_BOT_TOKEN", "description": "bot via @BotFather"},
+        {"name": "TELEGRAM_HOME_CHANNEL", "description": "chat id"},
+    ]
+    _DELIVER_CRON = [
+        {"name": "morning-brief", "schedule": "0 8 * * *", "prompt": "brief", "deliver": "telegram",
+         "enabled": False},
+        {"name": "followup-sweep", "schedule": "0 18 * * *", "prompt": "sweep", "deliver": "telegram",
+         "enabled": False},
+    ]
+
+    def test_section_present_with_surface_env(self) -> None:
+        text = build_finish_setup_skill(_tpl(env=self._SURFACE_ENV))  # type: ignore[arg-type]
+        self.assertIn("Mobile chat & proactive reminders", text)
+        self.assertIn("hermes gateway setup", text)
+
+    def test_resume_commands_render_for_deliver_cron(self) -> None:
+        text = build_finish_setup_skill(_tpl(cron=self._DELIVER_CRON))  # type: ignore[arg-type]
+        self.assertIn("Mobile chat & proactive reminders", text)
+        self.assertIn("hermes cron resume morning-brief", text)
+        self.assertIn("hermes cron resume followup-sweep", text)
+
+    def test_section_absent_without_surface_or_deliver_cron(self) -> None:
+        # A non-messaging cron job (command/args, no deliver) must NOT trigger the section.
+        tpl = _tpl(cron=[{"name": "sync", "schedule": "0 4 * * *", "command": "git"}])
+        text = build_finish_setup_skill(tpl)  # type: ignore[arg-type]
+        self.assertNotIn("Mobile chat & proactive reminders", text)
+
+    def test_surface_env_without_deliver_cron_omits_resume_step(self) -> None:
+        text = build_finish_setup_skill(_tpl(env=self._SURFACE_ENV))  # type: ignore[arg-type]
+        self.assertNotIn("hermes cron resume", text)
+
+
 class DiscoverMore(unittest.TestCase):
     def test_discovery_entries_render_as_links(self) -> None:
         tpl = _tpl(discovery=[

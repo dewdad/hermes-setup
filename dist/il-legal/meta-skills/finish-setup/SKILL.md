@@ -37,6 +37,8 @@ earlier in the fallback chain. None costs per call:
 - **ZENMUX_API_KEY** — Fallback + delegation provider (zenmux / claude-sonnet-5-free / claude-fable-5-free) — top up credits and create a Pay As You Go key at https://zenmux.ai/platform/pay-as-you-go; restrict the key to free models to use only free-tier quota.
 - **NVIDIA_API_KEY** — Fallback provider (nvidia / glm-5.2) — generate a NVIDIA Build API key at https://build.nvidia.com/settings/api-keys.
 - **GOOGLE_API_KEY** — Vision aux (gemini) — create a Google AI Studio Gemini API key at https://aistudio.google.com/app/apikey. GEMINI_API_KEY also accepted.
+- **TELEGRAM_BOT_TOKEN** — Mobile chat surface — create a free bot via @BotFather and paste its token. Tier 1, optional; enables reminders/proactive messages.
+- **TELEGRAM_HOME_CHANNEL** — Your Telegram chat id (the bot reports it) — the default delivery target for scheduled reminders.
 
 Set one on the CLI (auto-routed into `.env`, never committed):
 
@@ -121,6 +123,32 @@ cd ~/multi-gws-cli && npm install && npm run build
 
 Then complete the skill's Google OAuth (a Google account is all you need). Hermes picks
 up the built external dir automatically. Purely optional — the agent works without it.
+
+### Mobile chat & proactive reminders (Tier 1, optional)
+
+Reach the agent from your phone and let it nudge you proactively — all native Hermes, and
+the bot is free. Never required; skip it and the agent still works.
+
+1. **Connect a chat surface.** Create a free Telegram bot with @BotFather, then wire it with
+   the native gateway configurator (set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_HOME_CHANNEL` when
+   prompted, or in the profile's `.env`):
+
+```bash
+hermes gateway setup
+```
+
+2. **Let the agent learn you.** It keeps `USER.md` (timezone, working hours, preferred
+   channel, standing priorities) via native memory — tell it your preferences once and the
+   brief and follow-ups read from there. No extra setup.
+
+3. **Turn on the reminders.** This profile ships proactive jobs **paused**; run the
+   scheduler and resume the ones you want (they deliver to the surface from step 1):
+
+```bash
+hermes gateway      # run the scheduler daemon
+hermes cron resume morning-brief
+hermes cron resume followup-sweep
+```
 
 ### 3. Health check
 

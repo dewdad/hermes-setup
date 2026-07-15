@@ -71,15 +71,24 @@ env-var checks, secret hygiene, and skill security scanning — we never reinven
     token-compressor (a `setup_steps[]` local tool), and **free voice** — inbound voice-note
     transcription via local `faster-whisper` (`stt.provider: local`) and spoken replies via keyless
     `edge` TTS (local Piper/NeuTTS/KittenTTS as offline alternatives), with `ffmpeg` + the STT/TTS
-    deps provisioned by a `setup_steps[]` step. Installed on apply.
+    deps provisioned by a `setup_steps[]` step. Installed on apply. Also the **personal-assistant
+    disposition** — a thin `base/general` SOUL fragment (`assistant.md`) that has Hermes anticipate,
+    track open loops, remind, and follow up, leaning on native `memory` (`USER.md`) — free and
+    always on, inherited by every persona (which tailor only the *domain*, not this modality).
     **A working agent depends ONLY on Tier-0 (free) providers, never Tier-1.**
-  - **Tier 1 — guided opt-in:** Google Workspace (`multi-gws-cli` — Node build + OAuth) and
-    cross-platform messaging (`beeper` — companion app). The apply flow now **provisions** both for
-    free (bootstrap clones + `npm run build`s `~/multi-gws-cli`; the `beeper` skill auto-installs
-    from `skills.install.json`), and `/finish-setup` guides their human auth. Their host prereqs
-    (Node.js + git, the Beeper Desktop app, a Google account) live in `PREREQUISITES.md`. Still
-    **never required** for a working agent, never on the critical path, never a paid/per-call
-    dependency — they stay inert until the user completes the free auth.
+  - **Tier 1 — guided opt-in:** Google Workspace (`multi-gws-cli` — Node build + OAuth),
+    cross-platform messaging (`beeper` — companion app), and the **mobile-chat surface** — a native
+    Telegram channel (`env: TELEGRAM_BOT_TOKEN` + `TELEGRAM_HOME_CHANNEL`, a free @BotFather bot)
+    that both lets the user reach the agent from a phone AND gives the shipped **proactive reminder
+    cron** (`morning-brief` / `followup-sweep`, agent-prompt jobs shipped `enabled: false`) an
+    outbound path. The apply flow **provisions** Google + beeper for free (bootstrap clones +
+    `npm run build`s `~/multi-gws-cli`; the `beeper` skill auto-installs from `skills.install.json`),
+    and `/finish-setup` guides their human auth plus the native `hermes gateway setup` surface wiring
+    and `hermes cron resume` for the reminders — never a hardcoded gateway config block (Hermes' own
+    configurator owns that schema). Their host prereqs (Node.js + git, the Beeper Desktop app, a
+    Google account) live in `PREREQUISITES.md`. Still **never required** for a working agent, never
+    on the critical path, never a paid/per-call dependency — they stay inert until the user completes
+    the free auth.
 - **Reference-only skills (HARD RULE)** — this repo **authors no skill content**. Personas only
   *reference* verified-real skill ids from trusted registries; `dist/<persona>/` ships **no**
   `skills/` directory. Every referenced id MUST be confirmed real with `hermes skills search` /

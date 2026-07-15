@@ -26,6 +26,12 @@ env_requires:
 - description: Vision aux (gemini) — create a Google AI Studio Gemini API key at https://aistudio.google.com/app/apikey. GEMINI_API_KEY also accepted.
   name: GOOGLE_API_KEY
   required: false
+- description: Mobile chat surface — create a free bot via @BotFather and paste its token. Tier 1, optional; enables reminders/proactive messages.
+  name: TELEGRAM_BOT_TOKEN
+  required: false
+- description: Your Telegram chat id (the bot reports it) — the default delivery target for scheduled reminders.
+  name: TELEGRAM_HOME_CHANNEL
+  required: false
 hermes_requires: '>=0.18.0'
 license: MIT
 name: il-citizen

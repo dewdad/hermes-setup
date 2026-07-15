@@ -99,11 +99,21 @@ env:
   - name: GOOGLE_API_KEY
     description: Vision aux (gemini) — create a Google AI Studio Gemini API key at https://aistudio.google.com/app/apikey. GEMINI_API_KEY also accepted.
     required: false
+  # Tier-1, optional — the mobile-chat surface. With a bot token + chat id, /finish-setup can wire
+  # the native `hermes gateway setup` so you reach the agent on your phone AND the opt-in reminder
+  # cron jobs below have an outbound channel. Never required; a working agent runs without it.
+  - name: TELEGRAM_BOT_TOKEN
+    description: Mobile chat surface — create a free bot via @BotFather and paste its token. Tier 1, optional; enables reminders/proactive messages.
+    required: false
+  - name: TELEGRAM_HOME_CHANNEL
+    description: Your Telegram chat id (the bot reports it) — the default delivery target for scheduled reminders.
+    required: false
 
 soul:
   fragments:
     - identity.md
     - style.md
+    - assistant.md
     - skills.md
     - safety.md
 
@@ -165,6 +175,24 @@ cron:
     args: ["-C", "~/open-skills", "pull", "--ff-only"]
     enabled: false
     description: Daily fast-forward pull of the shared ~/open-skills checkout (opt-in).
+  # Personal-assistant proactive loop (native Hermes cronjob). Agent-prompt jobs: Hermes runs the
+  # prompt in a fresh session and delivers the reply to the configured surface. Shipped enabled:false
+  # per the repo contract (Hermes never auto-schedules distribution cron) — /finish-setup shows how to
+  # resume them, and both need a messaging surface (TELEGRAM_* above) + a running `hermes gateway`.
+  # `deliver` is a bare platform name (no secret). Personas may ADD domain jobs with DISTINCT names
+  # (cron merge is set-union with NO dedup-by-name — a same-named job would overwrite these on emit).
+  - name: morning-brief
+    schedule: "0 8 * * *"
+    prompt: "Give me a short morning brief: today's calendar, any due reminders, and my top priorities from USER.md. A few lines, no preamble."
+    deliver: telegram
+    enabled: false
+    description: Proactive daily brief (opt-in; needs a configured messaging surface).
+  - name: followup-sweep
+    schedule: "0 18 * * *"
+    prompt: "Review the commitments I logged in memory. List anything due or overdue and ask if I want to reschedule. If nothing is pending, stay silent."
+    deliver: telegram
+    enabled: false
+    description: Evening follow-up on open loops (opt-in; needs a configured messaging surface).
 
 # Local tools provisioned for every user (setup_steps — installed + configured by the apply flow,
 # NOT a `hermes skills install`). The compiler emits per-platform setup.steps.{sh,ps1}; bootstrap

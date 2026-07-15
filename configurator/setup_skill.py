@@ -15,7 +15,7 @@ catalogue URLs) is secret-free and re-scanned by ``emit`` before writing.
 from __future__ import annotations
 
 from configurator.model import DiscoveryRef, EnvVar, PostInstallRef, SetupStep, Template
-from configurator.yamlio import dump_yaml
+from configurator.yamlio import YamlMap, dump_yaml
 
 # The profile-relative external-skills dir the compiler ships the meta-skill into. Emitted verbatim
 # into config.yaml's ``skills.external_dirs`` so Hermes discovers + slash-registers finish-setup.
@@ -189,6 +189,51 @@ def _external_opt_in_lines(external_dirs: tuple[str, ...]) -> list[str]:
     return lines
 
 
+def _assistant_lines(env: tuple[EnvVar, ...], cron: tuple[YamlMap, ...]) -> list[str]:
+    """Mobile-chat surface + proactive-reminder guidance (rendered only when applicable).
+
+    Gated on a messaging-surface env var (``TELEGRAM_*``) or any agent-prompt cron job (one carrying
+    a ``deliver`` target). Uses the NATIVE ``hermes gateway setup`` + ``hermes cron`` — no bespoke
+    config block, so it respects Hermes' own defaults rather than asserting an unverified schema.
+    """
+    has_surface = any(v.name.upper().startswith("TELEGRAM") for v in env)
+    deliver_jobs = [j for j in cron if isinstance(j, dict) and j.get("deliver")]
+    if not has_surface and not deliver_jobs:
+        return []
+    lines = [
+        "",
+        "### Mobile chat & proactive reminders (Tier 1, optional)",
+        "",
+        "Reach the agent from your phone and let it nudge you proactively — all native Hermes, and",
+        "the bot is free. Never required; skip it and the agent still works.",
+        "",
+        "1. **Connect a chat surface.** Create a free Telegram bot with @BotFather, then wire it with",
+        "   the native gateway configurator (set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_HOME_CHANNEL` when",
+        "   prompted, or in the profile's `.env`):",
+        "",
+        "```bash",
+        "hermes gateway setup",
+        "```",
+        "",
+        "2. **Let the agent learn you.** It keeps `USER.md` (timezone, working hours, preferred",
+        "   channel, standing priorities) via native memory — tell it your preferences once and the",
+        "   brief and follow-ups read from there. No extra setup.",
+    ]
+    if deliver_jobs:
+        names = [str(j["name"]) for j in deliver_jobs if isinstance(j.get("name"), str)]
+        lines += [
+            "",
+            "3. **Turn on the reminders.** This profile ships proactive jobs **paused**; run the",
+            "   scheduler and resume the ones you want (they deliver to the surface from step 1):",
+            "",
+            "```bash",
+            "hermes gateway      # run the scheduler daemon",
+            *[f"hermes cron resume {n}" for n in names],
+            "```",
+        ]
+    return lines
+
+
 def _discover_lines(discovery: tuple[DiscoveryRef, ...]) -> list[str]:
     lines = [
         "Find more skills any time with the built-in registry search:",
@@ -240,6 +285,7 @@ def build_finish_setup_skill(template: Template) -> str:
         *_skill_lines(template.post_install),
         *_setup_step_lines(template.setup_steps),
         *_external_opt_in_lines(template.skills.external_dirs),
+        *_assistant_lines(template.env, template.cron),
         "",
         "### 3. Health check",
         "",

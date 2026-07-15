@@ -34,7 +34,17 @@ inheritance) the `configurator/` compiler resolves into native Hermes profile di
   - `bundles[]`: `{name, skills, description, instruction}`. `skills` names must match the local
     names the referenced skills install as (e.g. `docx`, not a fabricated id).
   - `mcp`: object (deep-merged).
-  - `cron[]`: list of scheduled tasks.
+  - `cron[]`: list of scheduled tasks — a **free-form passthrough** (`tuple[YamlMap, ...]`): each
+    entry is parsed as any mapping and emitted verbatim to `dist/<p>/cron/<name>.json`, so BOTH
+    native shapes work with no compiler change: script jobs (`command`/`args`, e.g.
+    `open-skills-sync`) and **agent-prompt jobs** (`prompt` + `deliver` + `enabled`, e.g. the
+    personal-assistant `morning-brief` / `followup-sweep` in `base/general`). Ship agent jobs
+    `enabled: false` (root contract: Hermes never auto-schedules distribution cron; the user resumes
+    them). Merge is set-union with **NO dedup-by-name** (`merge.py` concatenates), and `_write_cron`
+    keys the emitted file on `name` — so a persona job that reuses a base job's `name` OVERWRITES it
+    on emit. Persona cron jobs MUST use DISTINCT names (they add, never shadow). `deliver` is a bare
+    platform name (`telegram`), never a secret; cron JSON is NOT secret-scanned, so keep ids/tokens
+    out of cron entries (put `${VAR}` refs in `config`, which IS scanned).
   - `post_install[]`: `{id, note, tap, tier}` — the primary skill-sourcing surface. Emitted to the
     distribution README **and** to a machine-readable `skills.install.json`; the apply flow
     (`bootstrap.ps1`/`bootstrap.sh`) auto-runs `hermes skills install <id>` / `tap add <id>` from it.

@@ -37,7 +37,8 @@ This tree is a *build output*, not a source of truth.
     sets `model.provider: nous` + the four Tool Gateway tools `use_gateway: true` (the only base
     allowed to); its credential is the Portal OAuth token, not a key, so it declares no `env`.
   - `SOUL.md` — composed SOUL (≤ 20000 chars).
-  - `cron/` — scheduled task definitions.
+  - `cron/` — scheduled task definitions (script jobs like `open-skills-sync`, and agent-prompt
+    jobs like the personal-assistant `morning-brief` / `followup-sweep`, all shipped `enabled:false`).
   - `skill-bundles/` — declared bundles (skill *names* only, no content).
   - `skills.install.json` — machine-readable referenced-skill list the apply flow auto-installs
     (present iff the persona declares `post_install[]`).

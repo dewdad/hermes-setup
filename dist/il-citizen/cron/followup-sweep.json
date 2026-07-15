@@ -1,0 +1,8 @@
+{
+  "deliver": "telegram",
+  "description": "Evening follow-up on open loops (opt-in; needs a configured messaging surface).",
+  "enabled": false,
+  "name": "followup-sweep",
+  "prompt": "Review the commitments I logged in memory. List anything due or overdue and ask if I want to reschedule. If nothing is pending, stay silent.",
+  "schedule": "0 18 * * *"
+}

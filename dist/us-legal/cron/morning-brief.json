@@ -1,0 +1,8 @@
+{
+  "deliver": "telegram",
+  "description": "Proactive daily brief (opt-in; needs a configured messaging surface).",
+  "enabled": false,
+  "name": "morning-brief",
+  "prompt": "Give me a short morning brief: today's calendar, any due reminders, and my top priorities from USER.md. A few lines, no preamble.",
+  "schedule": "0 8 * * *"
+}

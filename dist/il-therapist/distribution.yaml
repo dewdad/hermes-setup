@@ -1,5 +1,5 @@
 author: hermes-setup
-description: Hebrew emotional-support companion — empathic, boundaried, crisis-aware. Not therapy.
+description: Personal assistant for an Israeli mental-health therapist — practice management, confidential session notes, scheduling, Hebrew intake forms & letters.
 distribution_owned:
 - README.md
 - SOUL.md
@@ -35,4 +35,4 @@ env_requires:
 hermes_requires: '>=0.18.0'
 license: MIT
 name: il-therapist
-version: 1.0.0
+version: 2.0.0

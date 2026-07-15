@@ -13,7 +13,7 @@
         "free",
         "pro"
       ],
-      "description": "Software-developer agent — TDD, PR workflow, code review, terminal, on the free chain.",
+      "description": "Personal assistant for a software developer — TDD, PR workflow, code review, terminal, on the free chain.",
       "kind": "persona",
       "local_install_command": "hermes profile install ./dist/developer --name developer --yes",
       "name": "developer",
@@ -68,7 +68,7 @@
         "free",
         "pro"
       ],
-      "description": "Everyday Israeli citizen assistant — gov services, consumer rights, forms, budgeting.",
+      "description": "Personal assistant for life in Israel — gov services, consumer rights, forms, budgeting.",
       "kind": "persona",
       "local_install_command": "hermes profile install ./dist/il-citizen --name il-citizen --yes",
       "name": "il-citizen",
@@ -82,7 +82,7 @@
         "free",
         "pro"
       ],
-      "description": "Israeli legal-tech assistant — contracts, tax, compliance, with strict disclaimers.",
+      "description": "Personal assistant for an Israeli legal professional — contracts, tax, compliance, drafting, with strict disclaimers.",
       "kind": "persona",
       "local_install_command": "hermes profile install ./dist/il-legal --name il-legal --yes",
       "name": "il-legal",
@@ -96,21 +96,21 @@
         "free",
         "pro"
       ],
-      "description": "Hebrew emotional-support companion — empathic, boundaried, crisis-aware. Not therapy.",
+      "description": "Personal assistant for an Israeli mental-health therapist — practice management, confidential session notes, scheduling, Hebrew intake forms & letters.",
       "kind": "persona",
       "local_install_command": "hermes profile install ./dist/il-therapist --name il-therapist --yes",
       "name": "il-therapist",
       "path": "dist/il-therapist",
       "standalone_posix_command": "curl -fsSL <RAW_REPO_URL>/install.sh | bash -s -- il-therapist --repo <REPO_GIT_URL> --yes",
       "standalone_windows_command": "$p=Join-Path $env:TEMP 'hermes-setup-install.ps1'; irm <RAW_REPO_URL>/install.ps1 -OutFile $p; & $p il-therapist -Repo <REPO_GIT_URL> -Yes",
-      "version": "1.0.0"
+      "version": "2.0.0"
     },
     {
       "apply_modes": [
         "free",
         "pro"
       ],
-      "description": "US legal-research assistant — jurisdiction-aware information with strict disclaimers.",
+      "description": "Personal assistant for a US legal professional — jurisdiction-aware research and drafting, with strict disclaimers.",
       "kind": "persona",
       "local_install_command": "hermes profile install ./dist/us-legal --name us-legal --yes",
       "name": "us-legal",

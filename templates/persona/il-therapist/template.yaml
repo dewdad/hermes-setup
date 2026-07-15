@@ -3,29 +3,28 @@ kind: persona
 extends: locale/il
 
 distribution:
-  description: Hebrew emotional-support companion — empathic, boundaried, crisis-aware. Not therapy.
-  version: 1.0.0
+  description: Personal assistant for an Israeli mental-health therapist — practice management, confidential session notes, scheduling, Hebrew intake forms & letters.
+  version: 2.0.0
   license: MIT
   author: hermes-setup
 
-# Emotional-support posture enforced at the CAPABILITY level: the `safe` toolset excludes terminal
-# and other high-capability tools (verified `config check`-clean). The inherited web-search skill is
-# pruned — a support companion does not shell out or crawl the web.
-config:
-  toolsets:
-    - safe
+# This persona is the THERAPIST'S OWN assistant (not a patient-facing chatbot), so it keeps the full
+# capable toolset it inherits from base/general — the clinician needs files, web research, documents,
+# and reminders to run a practice. Client confidentiality (סודיות מטופל) is enforced in SOUL, not by
+# removing tools. (Historically this persona was a locked-down `safe`-toolset support companion; it
+# was inverted to a practitioner's assistant per the decorator model — personas make Hermes a better
+# assistant FOR a kind of user.)
 
 soul:
   fragments:
-    - therapist-boundaries.md
+    - therapist-practice.md
 
-# Reference-only: no authored skills. Boundaries, crisis escalation, and wellbeing framing live in
-# the therapist-boundaries SOUL fragment. The inherited web-search reference is pruned — a support
-# companion does not crawl the web (the `safe` toolset also excludes terminal).
-# NOTE (verified 2026-07 via `hermes skills search`): NO trusted-registry skill exists for
-# therapeutic boundaries, Israeli wellbeing resources, or health services — only unvetted community
-# entries — so per the reference-only contract none are referenced here (not authored).
+# Reference-only: no authored skills. Practice conduct — client confidentiality, professional/ethical
+# boundaries, Israeli practice context, and crisis routing — lives in the therapist-practice SOUL
+# fragment. Intake forms, session-note templates, and client letters use the inherited Hebrew document
+# skills from locale/il (hebrew-document-generator + docx/pdf/xlsx) and web research from base/general.
+# NOTE (verified 2026-07 via `hermes skills search`): NO trusted-registry skill exists for Israeli
+# clinical practice management, session notes, or health-fund (קופות חולים) billing — only unvetted
+# community entries — so per the reference-only contract none are referenced here (not authored).
 skills:
   bundled: none
-  exclude:
-    - duckduckgo-search   # prune the web-search reference inherited from base/general

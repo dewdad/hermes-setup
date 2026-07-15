@@ -1,6 +1,6 @@
 {
   "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
-  "description": "Hebrew emotional-support companion — empathic, boundaried, crisis-aware. Not therapy.",
+  "description": "Personal assistant for an Israeli mental-health therapist — practice management, confidential session notes, scheduling, Hebrew intake forms & letters.",
   "groupings": [
     {
       "name": "bundle:hebrew-docs",

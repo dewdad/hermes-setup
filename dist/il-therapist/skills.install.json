@@ -16,6 +16,11 @@
       "tap": false
     },
     {
+      "id": "official/research/duckduckgo-search",
+      "note": "Keyless DuckDuckGo fallback for the `web` toolset when SearXNG instances are down.",
+      "tap": false
+    },
+    {
       "id": "skills-sh/dewdad/beeper-desktop-api-skill/beeper-desktop-api",
       "note": "Cross-platform messaging (WhatsApp/iMessage/Telegram/…). Needs the free Beeper Desktop app.",
       "tap": false

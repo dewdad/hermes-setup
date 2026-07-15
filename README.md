@@ -5,7 +5,7 @@ Layered, declarative **templates** compiled into ready-to-install [Hermes Agent]
 **Start here — pick your path:**
 
 - 👤 **I just want a working agent** → [For everyone — one-step install](#for-everyone--one-step-install-no-terminal-no-python). No terminal, no Python; free to run.
-- 🤖 **I'm an AI agent handed this repo's URL** → fetch [`profiles.json`](profiles.json) and follow its `agent_instructions` field verbatim, or read [For an AI agent pointed at this repo](#for-an-ai-agent-pointed-at-this-repo). One fetch + one command.
+- 🤖 **I'm an AI agent handed this repo's URL** → fetch `profiles.json` and follow its `agent_instructions` field verbatim, or read [For an AI agent pointed at this repo](#for-an-ai-agent-pointed-at-this-repo). One fetch + one command.
 - 🛠️ **I want to author or compile personas** → [Quick start (contributors)](#quick-start-contributors--compiling-from-templates).
 
 This repo is a **template compiler**, *not* an installer: it authors personas as layered templates and emits native Hermes **profile distributions**. Hermes' own `hermes profile install/update` handles apply, updates, env-var checks, secret hygiene, and skill security scanning — we don't reinvent that.
@@ -14,74 +14,51 @@ This repo is a **template compiler**, *not* an installer: it authors personas as
 
 ## For everyone — one-step install (no terminal, no Python)
 
-You do **not** need this repo's compiler, Python, or any developer tooling to *use* a persona. The
-compiler is a **contributor tool**; a compiled distribution under `dist/<persona>/` is a ready,
-standalone Hermes profile you install in one step and use for free.
+You do **not** need this repo's compiler, Python, or any developer tooling to *use* a persona. The compiler is a **contributor tool**; a compiled distribution under `dist/<persona>/` is a ready, standalone Hermes profile you install in one step and use for free.
 
 ### Pick the agent that fits your workflow
 
-Every persona runs on the same **free** model chain — choose by what you do most. `general` is the
-recommended starting point; swap its name into the install command for any other.
+Every persona is a **decorator on the same personal assistant**: it keeps the free model chain and the assistant modality of `general`, and specializes it — by locale, professional domain, or area of interest — into a more useful assistant *for a particular kind of user* (e.g. `il-therapist` is the assistant **for** an Israeli therapist, not a therapy chatbot). Choose by who you are / what you do most; `general` is the recommended starting point, and you swap its name into the install command for any other.
 
 | Persona | Best for | Install name |
 | --- | --- | --- |
-| **general** *(recommended)* | Everyday general-purpose assistant | `general` |
-| **developer** | Coding — TDD, PRs, code review, terminal | `developer` |
+| **general** *(recommended)* | Everyday general-purpose personal assistant | `general` |
+| **developer** | Assistant for a software developer — TDD, PRs, code review, terminal | `developer` |
 | **il** | Hebrew-first / Israeli workflows (RTL, gov forms) | `il` |
-| **il-citizen** | Israeli daily life — gov services, consumer rights, budgeting | `il-citizen` |
-| **il-legal** | Israeli legal-tech — contracts, tax, compliance (disclaimered) | `il-legal` |
-| **il-therapist** | Hebrew emotional-support companion (not therapy) | `il-therapist` |
-| **us-legal** | US legal research — jurisdiction-aware (disclaimered) | `us-legal` |
+| **il-citizen** | Assistant for life in Israel — gov services, consumer rights, budgeting | `il-citizen` |
+| **il-legal** | Assistant for an Israeli legal professional — contracts, tax, compliance (disclaimered) | `il-legal` |
+| **il-therapist** | Assistant for an Israeli therapist — practice mgmt, confidential notes, Hebrew forms | `il-therapist` |
+| **us-legal** | Assistant for a US legal professional — jurisdiction-aware research (disclaimered) | `us-legal` |
 | **general-pro** | Frontier models via a **paid** Nous Portal plan | `general-pro` |
 
 ### The short version
 
 1. Install Hermes and complete the free `hermes setup --portal` login (see prerequisites below).
 2. `hermes profile install ./dist/general --name general` (or any name from the table).
-3. Open it (`hermes -p general`) and run **`/finish-setup`**.
+3. Open it (`hermes -p general`) and run `/finish-setup`.
 
 That's a working, free agent. The detailed walkthrough follows.
 
-> **Do the one-time prerequisites first.** Before installing a persona, work through
-> **[`PREREQUISITES.md`](PREREQUISITES.md)** — install Hermes, complete the **free Nous Portal
-> subscription** + `hermes setup --portal` login (the baseline that powers free chat), and install
-> **Node.js + git** (the apply flow builds the Google Workspace CLI). Beeper Desktop and a Google
-> account are optional Tier-1 extras. Everything on the list is free to run.
+> **Do the one-time prerequisites first.** Before installing a persona, work through `PREREQUISITES.md` — install Hermes, complete the **free Nous Portal subscription** + `hermes setup --portal` login (the baseline that powers free chat), and install **Node.js + git** (the apply flow builds the Google Workspace CLI). Beeper Desktop and a Google account are optional Tier-1 extras. Everything on the list is free to run.
 
-1. **Install Hermes** — [Desktop installer](https://hermes-agent.nousresearch.com/) (recommended for
-   non-technical users), or the one-line CLI installer under *Quick start* below.
-2. **Install your chosen profile in one step** — swap `general` for any name from the table above.
-   Install from the user's published repo, a local folder, or (if your Hermes Desktop build supports
-   it) the in-UI "install profile from git/URL" import:
+1. **Install Hermes** — [Desktop installer](https://hermes-agent.nousresearch.com/) (recommended for non-technical users), or the one-line CLI installer under *Quick start* below.
+
+2. **Install your chosen profile in one step** — swap `general` for any name from the table above. Install from the user's published repo, a local folder, or (if your Hermes Desktop build supports it) the in-UI "install profile from git/URL" import:
 
    ```bash
    hermes profile install <REPO_URL> --name general      # once someone publishes dist/general
    hermes profile install ./dist/general --name general  # or straight from a local folder
    ```
 
-3. **Free chat is already on via the Nous Portal baseline.** Chat works out of the box once you have
-   completed the one-time `hermes setup --portal` login from the prerequisites — that free Portal
-   sign-in **is** the required free baseline. Adding **any one** free-tier provider key
-   (`OPENCODE_ZEN_API_KEY`, `ZENMUX_API_KEY`, `NVIDIA_API_KEY`, or `GOOGLE_API_KEY`) is an optional
-   upgrade that unlocks higher-quality free models earlier in the chain. With no Portal login **and**
-   no key, the chain returns HTTP 403. Browser automation and web research/scraping (SearXNG +
-   DuckDuckGo) are **genuinely keyless** and install on apply, so those work regardless.
-4. **Run `/finish-setup`** in the chat — it walks you through the optional provider keys,
-   (re)installs the referenced skills, offers Tier-1 extras (Google Workspace, messaging), and lists
-   more skills to discover. Everything beyond the free Portal baseline is optional.
+3. **Free chat is already on via the Nous Portal baseline.** Chat works out of the box once you have completed the one-time `hermes setup --portal` login from the prerequisites — that free Portal sign-in **is** the required free baseline. Adding **any one** free-tier provider key (`OPENCODE_ZEN_API_KEY`, `ZENMUX_API_KEY`, `NVIDIA_API_KEY`, or `GOOGLE_API_KEY`) is an optional upgrade that unlocks higher-quality free models earlier in the chain. With no Portal login **and**no key, the chain returns HTTP 403. Browser automation and web research/scraping (SearXNG + DuckDuckGo) are **genuinely keyless** and install on apply, so those work regardless.
 
-> **Capability tiers.** *Tier 0* is **free to run** (no per-call cost): free chat runs on the free
-> Nous Portal baseline (optionally sharpened by one free-tier key), while browser automation + web
-> research are **keyless**. A working agent depends only on Tier-0 (free) providers. *Tier 1* (Google
-> Workspace via `multi-gws-cli`, messaging via `beeper`) is a guided opt-in through `/finish-setup`
-> and is never required.
+4. **Run** `/finish-setup` in the chat — it walks you through the optional provider keys, (re)installs the referenced skills, offers Tier-1 extras (Google Workspace, messaging), and lists more skills to discover. Everything beyond the free Portal baseline is optional.
+
+> **Capability tiers.** *Tier 0* is **free to run** (no per-call cost): free chat runs on the free Nous Portal baseline (optionally sharpened by one free-tier key), while browser automation + web research are **keyless**. A working agent depends only on Tier-0 (free) providers. *Tier 1* (Google Workspace via `multi-gws-cli`, messaging via `beeper`) is a guided opt-in through `/finish-setup`and is never required.
 
 ### Free (default) or paid Nous Portal — your choice per install
 
-The free chain above is the default for **every** persona. If you have a **paid
-[Nous Portal](https://portal.nousresearch.com) subscription**, you can instead run any persona on the
-Portal — frontier agentic models plus the Nous Tool Gateway (web, image, TTS, browser) through one
-OAuth login, no per-tool API keys. Two ways:
+The free chain above is the default for **every** persona. If you have a **paid [Nous Portal](https://portal.nousresearch.com) subscription**, you can instead run any persona on the Portal — frontier agentic models plus the Nous Tool Gateway (web, image, TTS, browser) through one OAuth login, no per-tool API keys. Two ways:
 
 - **Any persona, in paid mode** — add `--pro` (named-profile install) or `--portal` (bootstrap):
 
@@ -91,10 +68,7 @@ OAuth login, no per-tool API keys. Two ways:
   ./bootstrap.sh --template developer --portal   # apply to the default profile in paid mode
   ```
 
-  This installs the persona's free distribution, then splices the Nous Portal base-layer config onto
-  it (`hermes config set`) and runs the Portal OAuth login (`hermes auth add nous`). Or, from inside
-  the agent, run `/finish-setup` and follow its **"Upgrade to Nous Portal"** step (`hermes setup
-  --portal`).
+  This installs the persona's free distribution, then splices the Nous Portal base-layer config onto it (`hermes config set`) and runs the Portal OAuth login (`hermes auth add nous`). Or, from inside the agent, run `/finish-setup` and follow its **"Upgrade to Nous Portal"** step (`hermes setup --portal`).
 
 - **A plain Portal general agent** — install the `general-pro` base directly:
 
@@ -102,8 +76,7 @@ OAuth login, no per-tool API keys. Two ways:
   hermes profile install ./dist/general-pro --name general-pro
   ```
 
-> Paid mode requires a **paid** Nous Portal plan (the free plan runs free models only). See
-> [`PREREQUISITES.md`](PREREQUISITES.md).
+> Paid mode requires a **paid** Nous Portal plan (the free plan runs free models only). See `PREREQUISITES.md`.
 
 Everything below is the **contributor** workflow for authoring and compiling personas.
 
@@ -111,15 +84,9 @@ Everything below is the **contributor** workflow for authoring and compiling per
 
 ## For an AI agent pointed at this repo
 
-Hand an agent — even a small model like the free `stepfun/step-3.7-flash:free` — a link to this
-repo and ask it to set you up, and the reliable flow is **one fetch + one command**: no
-repo-subdirectory install (Hermes can't do that), no multi-step reasoning.
+Hand an agent — even a small model like the free `stepfun/step-3.7-flash:free` — a link to this repo and ask it to set you up, and the reliable flow is **one fetch + one command**: no repo-subdirectory install (Hermes can't do that), no multi-step reasoning.
 
-1. **Fetch the catalogue.** [`profiles.json`](profiles.json) at the repo root is a generated,
-   machine-readable index of every installable profile — `name`, `kind`, `description`, `version`,
-   the `dist/<name>` path, and three ready-to-run commands (`local_install_command`,
-   `standalone_posix_command`, `standalone_windows_command`) — plus an `agent_instructions` string
-   the model follows verbatim. One raw-URL fetch gives the agent the whole list:
+1. **Fetch the catalogue.** `profiles.json` at the repo root is a generated, machine-readable index of every installable profile — `name`, `kind`, `description`, `version`, the `dist/<name>` path, and three ready-to-run commands (`local_install_command`, `standalone_posix_command`, `standalone_windows_command`) — plus an `agent_instructions` string the model follows verbatim. One raw-URL fetch gives the agent the whole list:
 
    ```
    <RAW_REPO_URL>/profiles.json    # e.g. https://raw.githubusercontent.com/<owner>/hermes-setup/main/profiles.json
@@ -127,12 +94,9 @@ repo-subdirectory install (Hermes can't do that), no multi-step reasoning.
 
 2. **List and pick.** The agent shows the `profiles[]` entries and asks which one you want.
 
-3. **Install the choice.** `hermes profile install` **cannot** target a repo *subdirectory* (it
-   clones the URL root and needs `distribution.yaml` there), so installation always runs from a
-   **local clone**. Two cases:
+3. **Install the choice.** `hermes profile install` **cannot** target a repo *subdirectory* (it clones the URL root and needs `distribution.yaml` there), so installation always runs from a **local clone**. Two cases:
 
-   - **Already inside a clone** → run the profile's `local_install_command`, i.e. the bundled
-     installer:
+   - **Already inside a clone** → run the profile's `local_install_command`, i.e. the bundled installer:
 
      ```bash
      ./install.sh <name> --yes          # POSIX;  --list to list; --name / --repo also supported
@@ -142,8 +106,7 @@ repo-subdirectory install (Hermes can't do that), no multi-step reasoning.
      .\install.ps1 <name> -Yes          # Windows; -List, -Name, -Repo
      ```
 
-   - **Standalone (no checkout yet)** → run the profile's `standalone_posix_command` /
-     `standalone_windows_command`, which clone the repo for you (substitute the URLs of *this* repo):
+   - **Standalone (no checkout yet)** → run the profile's `standalone_posix_command` / `standalone_windows_command`, which clone the repo for you (substitute the URLs of *this* repo):
 
      ```bash
      curl -fsSL <RAW_REPO_URL>/install.sh | bash -s -- <name> --repo <REPO_GIT_URL> --yes
@@ -155,12 +118,9 @@ repo-subdirectory install (Hermes can't do that), no multi-step reasoning.
 
    `--yes` / `-Yes` skips the Hermes confirmation prompt (recommended for unattended agent runs).
 
-4. **Finish.** Open the profile (`hermes -p <name>`) and run `/finish-setup` to add a free key and
-   install its skills.
+4. **Finish.** Open the profile (`hermes -p <name>`) and run `/finish-setup` to add a free key and install its skills.
 
-`profiles.json` and both installers are persona-agnostic and hard-code **no** repo URL — the agent
-uses the link you gave it. `profiles.json` is regenerated by `compile`, so it never drifts from
-`dist/`.
+`profiles.json` and both installers are persona-agnostic and hard-code **no** repo URL — the agent uses the link you gave it. `profiles.json` is regenerated by `compile`, so it never drifts from `dist/`.
 
 ---
 
@@ -187,26 +147,19 @@ dist/<persona>/
 └─ README.md             # install steps + auto-installed referenced-skill block
 ```
 
-> **Reference-only:** distributions ship **no `skills/` directory**. This repo authors no skill
-> content — personas only *reference* verified-real skill ids from trusted registries, which the
-> apply flow installs via `hermes skills install`.
+> **Reference-only:** distributions ship **no** `skills/` **directory**. This repo authors no skill content — personas only *reference* verified-real skill ids from trusted registries, which the apply flow installs via `hermes skills install`.
 
 ### Three-bucket skill source model
 
-This repo **authors no skill content**. Personas only *reference* verified-real skill ids from
-trusted registries — every id is confirmed with `hermes skills search` / `hermes skills inspect`
-before it ships (no fabricated ids). Skills are sourced three ways. This is a **binding project
-contract** (see the root `AGENTS.md`):
+This repo **authors no skill content**. Personas only *reference* verified-real skill ids from trusted registries — every id is confirmed with `hermes skills search` / `hermes skills inspect`before it ships (no fabricated ids). Skills are sourced three ways. This is a **binding project contract** (see the root `AGENTS.md`):
 
 | Bucket | Where it lives | When to use it |
 | --- | --- | --- |
 | **1. Vendored + locked (dormant capability)** | Copied into `dist/<persona>/skills/…`, pinned by content hash in `locks/<template>.lock.json`. | Retained github/url/well-known fetch for genuinely *fetched* real skills if offline reproducibility is ever needed. **No template uses this today** (so `locks/` is empty); authoring skills in-repo (`source: local`) is removed. |
-| **2. Referenced live via `skills.external_dirs`** | *Not* copied. Emitted as a path in `config.yaml` (e.g. `~/open-skills/skills`). Hermes **silently skips** the entry if the directory does not exist. | Fast-moving shared checkouts shared across every profile (e.g. `dewdad/open-skills`). One git checkout, no duplication. |
+| **2. Referenced live via** `skills.external_dirs` | *Not* copied. Emitted as a path in `config.yaml` (e.g. `~/open-skills/skills`). Hermes **silently skips** the entry if the directory does not exist. | Fast-moving shared checkouts shared across every profile (e.g. `dewdad/open-skills`). One git checkout, no duplication. |
 | **3. Referenced post-install (the default path)** | Not vendored. Listed in `dist/<persona>/skills.install.json` and the README; the apply flow auto-runs `hermes skills install …` / `hermes skills tap add …`. | Default taps (`openai`, `anthropics`, `huggingface`, `NVIDIA`, `garrytan/gstack`), `obra/superpowers`, `official/…`, and source-available skills (Anthropic `docx/pdf/pptx/xlsx`). Preserves each tap's built-in trust and `NVIDIA/skills`' signatures, and sidesteps redistribution-license issues. |
 
-Where no trusted-registry skill exists for a capability, the persona references the closest real
-skill or omits it — the SOUL fragments still shape behavior. The compiler **fails the build** if a
-`redistributable: false` skill is ever vendored into `dist/` instead of referenced post-install.
+Where no trusted-registry skill exists for a capability, the persona references the closest real skill or omits it — the SOUL fragments still shape behavior. The compiler **fails the build** if a `redistributable: false` skill is ever vendored into `dist/` instead of referenced post-install.
 
 ### Secret hygiene (hard rule)
 
@@ -219,8 +172,7 @@ skill or omits it — the SOUL fragments still shape behavior. The compiler **fa
 
 ## Quick start (contributors — compiling from templates)
 
-> If you just want to *use* a persona, see **For everyone — one-step install** above; you do not
-> need any of the steps in this section.
+> If you just want to *use* a persona, see **For everyone — one-step install** above; you do not need any of the steps in this section.
 
 ### 1. Install Hermes (once per machine)
 
@@ -357,12 +309,12 @@ post_install:                               # bucket 3 (default path) — verifi
   - { id: obra/superpowers, tap: true, note: "Dev workflow skills (adds the tap)." }
 ```
 
-Every `post_install` id must be confirmed real with `hermes skills search` / `hermes skills inspect`
-before it ships. The apply flow auto-installs them from the emitted `skills.install.json`.
+Every `post_install` id must be confirmed real with `hermes skills search` / `hermes skills inspect`before it ships. The apply flow auto-installs them from the emitted `skills.install.json`.
 
 ### Extending and locking
 
 - Add a new persona by creating `templates/persona/<name>/template.yaml` with `extends:` pointing at any existing base or locale.
+
 - Reference skills via `post_install[]` (verified-real ids only). `locks/` is **empty** under the reference-only model — it only fills if a template ever uses the dormant github/url/well-known vendoring capability. In that case, refresh with:
 
   ```powershell
@@ -370,6 +322,7 @@ before it ships. The apply flow auto-installs them from the emitted `skills.inst
   ```
 
   This is the **only** writer of `locks/` (it also prunes orphan lockfiles when a template vendors nothing).
+
 - After any template or lockfile edit, run:
 
   ```powershell
@@ -383,7 +336,9 @@ before it ships. The apply flow auto-installs them from the emitted `skills.inst
 Every leaf under `dist/<persona>/` is already a valid Hermes profile distribution. To publish one standalone so others can install it directly from git:
 
 1. Copy `dist/<persona>/` out to its own git repo (or use `git subtree split`).
+
 2. Push it to GitHub / any git host.
+
 3. Anyone can then install it with:
 
    ```powershell
@@ -404,15 +359,18 @@ python -m configurator ingest
 python -m configurator ingest --profile my-general
 ```
 
-`ingest` reads the **live `config.yaml` only** — never `.env`, `auth.json`, `models.json`, `desktop.json`, or any desktop/session state. It diffs the live config against the resolved `base/general` config and prints a reviewable drift diff. Nothing is written automatically; fold the meaningful drift back into the appropriate template by hand, then recompile.
+`ingest` reads the **live** `config.yaml` **only** — never `.env`, `auth.json`, `models.json`, `desktop.json`, or any desktop/session state. It diffs the live config against the resolved `base/general` config and prints a reviewable drift diff. Nothing is written automatically; fold the meaningful drift back into the appropriate template by hand, then recompile.
 
 ---
 
 ## Config schema & upgrades
 
 - Target: `_config_version: 33` (Hermes v0.18.x / 2026.7.x).
+
 - Custom providers use `key_env` (not `api_key_env`).
+
 - Unknown config keys are **warned, not failed** — live Hermes `config check` is lenient.
+
 - After a Hermes upgrade, on each profile you use:
 
   ```powershell
@@ -434,21 +392,13 @@ Four independent providers, every provider key `required: false` — **any one k
 
 ## `base/general-pro` — the paid Nous Portal chain (opt-in)
 
-`base/general-pro` is the **paid** sibling rail — never the default, never inherited by a free
-persona. It mirrors exactly what `hermes setup --portal` writes:
+`base/general-pro` is the **paid** sibling rail — never the default, never inherited by a free persona. It mirrors exactly what `hermes setup --portal` writes:
 
-- **Inference:** `model.provider: nous` on `https://inference-api.nousresearch.com/v1`, default
-  `anthropic/claude-sonnet-4.6` (a frontier *agentic* model — deliberately **not** Hermes-4, which is
-  chat/reasoning-tuned), with a `nous / stepfun/step-3.7-flash:free` free floor.
-- **Nous Tool Gateway on (`use_gateway: true`):** `web` (Firecrawl) · `browser` (Browser Use) ·
-  `image_gen` (FAL) · `tts` (OpenAI TTS) — this is the one base allowed to route through the paid
-  gateway.
-- **Credential:** the Portal OAuth token (`hermes setup --portal` → `~/.hermes/auth.json`), not an
-  API key — so it declares `env: []` and its `/finish-setup` walks the OAuth login instead of keys.
+- **Inference:** `model.provider: nous` on `https://inference-api.nousresearch.com/v1`, default `anthropic/claude-sonnet-4.6` (a frontier *agentic* model — deliberately **not** Hermes-4, which is chat/reasoning-tuned), with a `nous / stepfun/step-3.7-flash:free` free floor.
+- **Nous Tool Gateway on (**`use_gateway: true`**):** `web` (Firecrawl) · `browser` (Browser Use) · `image_gen` (FAL) · `tts` (OpenAI TTS) — this is the one base allowed to route through the paid gateway.
+- **Credential:** the Portal OAuth token (`hermes setup --portal` → `~/.hermes/auth.json`), not an API key — so it declares `env: []` and its `/finish-setup` walks the OAuth login instead of keys.
 
-Use it standalone (`hermes profile install ./dist/general-pro --name general-pro`) or apply any
-persona in paid mode with `--pro` / `--portal` (see *Free or paid* above). Requires a **paid** Nous
-Portal plan.
+Use it standalone (`hermes profile install ./dist/general-pro --name general-pro`) or apply any persona in paid mode with `--pro` / `--portal` (see *Free or paid* above). Requires a **paid** Nous Portal plan.
 
 ---
 

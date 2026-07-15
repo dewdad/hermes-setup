@@ -58,8 +58,6 @@ stt:
   local:
     model: ivrit-ai/whisper-large-v3-turbo
   provider: local
-toolsets:
-- safe
 tts:
   edge:
     voice: he-IL-AvriNeural

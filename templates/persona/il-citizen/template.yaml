@@ -3,7 +3,7 @@ kind: persona
 extends: locale/il
 
 distribution:
-  description: Everyday Israeli citizen assistant — gov services, consumer rights, forms, budgeting.
+  description: Personal assistant for life in Israel — gov services, consumer rights, forms, budgeting.
   version: 1.0.0
   license: MIT
   author: hermes-setup

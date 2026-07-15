@@ -86,7 +86,7 @@ inheritance) the `configurator/` compiler resolves into native Hermes profile di
     entry.
   - Skills: `include` dedupes by `(source, id)`; `exclude` matches by skill name (last path
     segment) and prunes **both** inherited `include[]` skills **and** inherited `post_install[]`
-    references (e.g. `il-therapist` excludes `duckduckgo-search` to drop the inherited web search).
+    references (e.g. a persona may exclude `duckduckgo-search` to drop the inherited web search).
   - `post_install[]` dedupes by `id` (child overrides, carrying its `tier`); `discovery[]` set-unions
     by `url` (child overrides an entry with the same url); both preserve base→locale→persona order.
   - `setup_steps[]` set-unions by `id` (child overrides), preserving base→locale→persona order;

@@ -1,6 +1,6 @@
 {
   "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
-  "description": "Israeli legal-tech assistant — contracts, tax, compliance, with strict disclaimers.",
+  "description": "Personal assistant for an Israeli legal professional — contracts, tax, compliance, drafting, with strict disclaimers.",
   "groupings": [
     {
       "name": "bundle:hebrew-docs",

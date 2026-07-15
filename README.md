@@ -1,19 +1,14 @@
 # hermes-setup
 
-<!-- AGENT-INSTALL:START -->
-> **AGENT INSTRUCTIONS (read first if you are an AI agent given this repo's URL and asked to set up / install a Hermes profile):**
->
-> 1. **Fetch the catalogue:** `<REPO_RAW_BASE>/profiles.json` — where `<REPO_RAW_BASE>` is this repo's raw-content base (for GitHub, turn `https://github.com/<owner>/<repo>` into `https://raw.githubusercontent.com/<owner>/<repo>/<default-branch>`; this repo → `https://raw.githubusercontent.com/dewdad/hermes-setup/main`).
-> 2. **List & pick:** show the user the `profiles[]` entries (`name` + `description`) and ask which one.
-> 3. **Install the chosen `<name>`:** run that entry's `standalone_posix_command` (macOS/Linux) or `standalone_windows_command` (Windows), replacing `<RAW_REPO_URL>` with `<REPO_RAW_BASE>` and `<REPO_GIT_URL>` with this repo's git URL. If you are *already inside a local clone*, run `local_install_command` instead.
-> 4. **Finish:** tell the user to open the profile (`hermes -p <name>`) and run `/finish-setup`.
->
-> `profiles.json` also carries an `agent_instructions` field with this same recipe. Do **not** run `hermes profile install` against a repo-subdirectory URL — it only accepts a repo ROOT or a LOCAL folder; the standalone command clones for you. Full details: [For an AI agent pointed at this repo](#for-an-ai-agent-pointed-at-this-repo).
-<!-- AGENT-INSTALL:END -->
+Layered, declarative **templates** compiled into ready-to-install [Hermes Agent](https://hermes-agent.nousresearch.com/docs) profiles — so anyone gets a capable, budget-friendly agent in **one step, for free**.
 
-A **template compiler** for [Hermes Agent](https://hermes-agent.nousresearch.com/docs) by Nous Research. Author personas as layered declarative templates, compile them into native Hermes **profile distributions**, and apply them anywhere Hermes runs.
+**Start here — pick your path:**
 
-This repo is *not* an installer. Hermes' own `hermes profile install/update` handles apply, updates, env-var checks, secret hygiene, and skill security scanning — we don't reinvent that.
+- 👤 **I just want a working agent** → [For everyone — one-step install](#for-everyone--one-step-install-no-terminal-no-python). No terminal, no Python; free to run.
+- 🤖 **I'm an AI agent handed this repo's URL** → fetch [`profiles.json`](profiles.json) and follow its `agent_instructions` field verbatim, or read [For an AI agent pointed at this repo](#for-an-ai-agent-pointed-at-this-repo). One fetch + one command.
+- 🛠️ **I want to author or compile personas** → [Quick start (contributors)](#quick-start-contributors--compiling-from-templates).
+
+This repo is a **template compiler**, *not* an installer: it authors personas as layered templates and emits native Hermes **profile distributions**. Hermes' own `hermes profile install/update` handles apply, updates, env-var checks, secret hygiene, and skill security scanning — we don't reinvent that.
 
 ---
 
@@ -23,6 +18,30 @@ You do **not** need this repo's compiler, Python, or any developer tooling to *u
 compiler is a **contributor tool**; a compiled distribution under `dist/<persona>/` is a ready,
 standalone Hermes profile you install in one step and use for free.
 
+### Pick the agent that fits your workflow
+
+Every persona runs on the same **free** model chain — choose by what you do most. `general` is the
+recommended starting point; swap its name into the install command for any other.
+
+| Persona | Best for | Install name |
+| --- | --- | --- |
+| **general** *(recommended)* | Everyday general-purpose assistant | `general` |
+| **developer** | Coding — TDD, PRs, code review, terminal | `developer` |
+| **il** | Hebrew-first / Israeli workflows (RTL, gov forms) | `il` |
+| **il-citizen** | Israeli daily life — gov services, consumer rights, budgeting | `il-citizen` |
+| **il-legal** | Israeli legal-tech — contracts, tax, compliance (disclaimered) | `il-legal` |
+| **il-therapist** | Hebrew emotional-support companion (not therapy) | `il-therapist` |
+| **us-legal** | US legal research — jurisdiction-aware (disclaimered) | `us-legal` |
+| **general-pro** | Frontier models via a **paid** Nous Portal plan | `general-pro` |
+
+### The short version
+
+1. Install Hermes and complete the free `hermes setup --portal` login (see prerequisites below).
+2. `hermes profile install ./dist/general --name general` (or any name from the table).
+3. Open it (`hermes -p general`) and run **`/finish-setup`**.
+
+That's a working, free agent. The detailed walkthrough follows.
+
 > **Do the one-time prerequisites first.** Before installing a persona, work through
 > **[`PREREQUISITES.md`](PREREQUISITES.md)** — install Hermes, complete the **free Nous Portal
 > subscription** + `hermes setup --portal` login (the baseline that powers free chat), and install
@@ -31,26 +50,31 @@ standalone Hermes profile you install in one step and use for free.
 
 1. **Install Hermes** — [Desktop installer](https://hermes-agent.nousresearch.com/) (recommended for
    non-technical users), or the one-line CLI installer under *Quick start* below.
-2. **Install the `general` profile in one step** — from the user's published repo, a local folder, or
-   (if your Hermes Desktop build supports it) the in-UI "install profile from git/URL" import:
+2. **Install your chosen profile in one step** — swap `general` for any name from the table above.
+   Install from the user's published repo, a local folder, or (if your Hermes Desktop build supports
+   it) the in-UI "install profile from git/URL" import:
 
    ```bash
    hermes profile install <REPO_URL> --name general      # once someone publishes dist/general
    hermes profile install ./dist/general --name general  # or straight from a local folder
    ```
 
-3. **Turn on free chat with one key (or a free sign-in).** Chat runs on a free, no-per-call-cost
-   model chain, but it needs **one** free-tier provider key — or a free Nous sign-in via
-   `hermes auth`. Browser automation and web research/scraping (SearXNG + DuckDuckGo) are **genuinely
-   keyless** and install on apply, so those work before you add anything.
-4. **Run `/finish-setup`** in the chat — it walks you through setting that one free key (or sign-in),
+3. **Free chat is already on via the Nous Portal baseline.** Chat works out of the box once you have
+   completed the one-time `hermes setup --portal` login from the prerequisites — that free Portal
+   sign-in **is** the required free baseline. Adding **any one** free-tier provider key
+   (`OPENCODE_ZEN_API_KEY`, `ZENMUX_API_KEY`, `NVIDIA_API_KEY`, or `GOOGLE_API_KEY`) is an optional
+   upgrade that unlocks higher-quality free models earlier in the chain. With no Portal login **and**
+   no key, the chain returns HTTP 403. Browser automation and web research/scraping (SearXNG +
+   DuckDuckGo) are **genuinely keyless** and install on apply, so those work regardless.
+4. **Run `/finish-setup`** in the chat — it walks you through the optional provider keys,
    (re)installs the referenced skills, offers Tier-1 extras (Google Workspace, messaging), and lists
-   more skills to discover. Everything beyond the one chat key is optional.
+   more skills to discover. Everything beyond the free Portal baseline is optional.
 
-> **Capability tiers.** *Tier 0* is **free to run** (no per-call cost): free chat needs **one** free
-> key or a `hermes auth` sign-in, while browser automation + web research are **keyless**. A working
-> agent depends only on Tier-0 (free) providers. *Tier 1* (Google Workspace via `multi-gws-cli`,
-> messaging via `beeper`) is a guided opt-in through `/finish-setup` and is never required.
+> **Capability tiers.** *Tier 0* is **free to run** (no per-call cost): free chat runs on the free
+> Nous Portal baseline (optionally sharpened by one free-tier key), while browser automation + web
+> research are **keyless**. A working agent depends only on Tier-0 (free) providers. *Tier 1* (Google
+> Workspace via `multi-gws-cli`, messaging via `beeper`) is a guided opt-in through `/finish-setup`
+> and is never required.
 
 ### Free (default) or paid Nous Portal — your choice per install
 

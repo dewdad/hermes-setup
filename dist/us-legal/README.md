@@ -14,6 +14,11 @@ hermes profile install <path-or-git-url> --name us-legal
 Fill in the keys listed in `.env.EXAMPLE` (all provider keys are optional — any one yields
 a working agent). Then run `hermes -p <profile> config check`.
 
+New to Hermes? Do the one-time host setup first — install Hermes and complete the free
+`hermes setup --portal` login (the free baseline that powers chat). Then, after installing,
+open the profile (`hermes -p <profile>`) and run **`/finish-setup`** to add any optional
+provider keys, install the referenced skills, and health-check.
+
 ## Referenced skills (auto-installed on apply)
 
 This distribution authors no skills. The skills below are referenced from trusted

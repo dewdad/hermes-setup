@@ -79,6 +79,11 @@ def build_readme(template: Template) -> str:
         "",
         "Fill in the keys listed in `.env.EXAMPLE` (all provider keys are optional — any one yields",
         "a working agent). Then run `hermes -p <profile> config check`.",
+        "",
+        "New to Hermes? Do the one-time host setup first — install Hermes and complete the free",
+        "`hermes setup --portal` login (the free baseline that powers chat). Then, after installing,",
+        "open the profile (`hermes -p <profile>`) and run **`/finish-setup`** to add any optional",
+        "provider keys, install the referenced skills, and health-check.",
     ]
     lines.extend(_post_install_block(template.post_install))
     lines.extend(_setup_steps_block(template.setup_steps))

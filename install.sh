@@ -8,8 +8,13 @@
 # Usage:
 #   ./install.sh --list                 # list installable profiles (name + description)
 #   ./install.sh <name> [--name PROF]   # install dist/<name> as a Hermes profile (default PROF=<name>)
+#   ./install.sh <name> --new           # force a NEW isolated profile (skip the prompt)
+#   ./install.sh <name> --extend        # MERGE into the current/default profile via bootstrap (skip the prompt)
 #   ./install.sh <name> --yes           # skip the Hermes install confirmation prompt
 #   ./install.sh <name> --pro           # after install, apply the PAID Nous Portal base (see below)
+#
+# Apply mode: with neither --new nor --extend, an interactive run prompts [1] new / [2] extend;
+# a non-interactive run (piped / --yes) defaults to a NEW isolated profile.
 #
 # --pro (paid Nous Portal mode): the free chain is the default. With --pro, after the persona is
 # installed this splices the base/general-pro base-layer config (Nous provider + Tool Gateway) onto
@@ -27,15 +32,19 @@ ASSUME_YES=0
 PRO=0
 PROFILE=""
 NAME=""
+MODE=""            # "" = ask (interactive) / default new; "new" = force isolated; "extend" = merge into current
 REPO_URL="${HERMES_SETUP_REPO:-}"
 
 usage() {
   cat <<'EOF'
 Usage: ./install.sh --list
-       ./install.sh <name> [--name PROFILE] [--yes] [--pro] [--repo GIT_URL]
+       ./install.sh <name> [--name PROFILE] [--new|--extend] [--yes] [--pro] [--repo GIT_URL]
    --list         List installable profiles (name + description) and exit.
    <name>         Profile to install (a dist/<name> in this repo; see --list).
    --name PROFILE Hermes profile name to install under (default: <name>).
+   --new          Force a NEW isolated profile (skip the prompt; the default when neither is given).
+   --extend       MERGE into your current/default profile via bootstrap (skip the prompt).
+                  (--new and --extend are mutually exclusive.)
    --yes          Pass --yes to `hermes profile install` (no confirmation prompt).
    --pro          After install, apply the PAID Nous Portal base (needs a paid Portal plan).
    --repo GIT_URL Clone this repo URL when run standalone (or set HERMES_SETUP_REPO).
@@ -50,6 +59,8 @@ while [ $# -gt 0 ]; do
     --repo) [ $# -ge 2 ] || { echo "--repo requires a value" >&2; usage >&2; exit 2; }; REPO_URL="$2"; shift 2;;
     --yes|-y) ASSUME_YES=1; shift;;
     --pro) PRO=1; shift;;
+    --new) if [ "$MODE" = extend ]; then echo "--new and --extend are mutually exclusive" >&2; exit 2; fi; MODE="new"; shift;;
+    --extend) if [ "$MODE" = new ]; then echo "--new and --extend are mutually exclusive" >&2; exit 2; fi; MODE="extend"; shift;;
     -h|--help) usage; exit 0;;
     --) shift
         while [ $# -gt 0 ]; do
@@ -163,6 +174,15 @@ resolve_repo_root() {
   exit 1
 }
 
+# Translate a path for the `hermes` CLI. On Windows, `hermes` is a NATIVE executable that cannot
+# resolve MSYS/Cygwin POSIX paths (e.g. /c/Users/... — Git Bash's form), so `hermes profile install`
+# rejects them ("Cannot resolve distribution source"). Under Git Bash/MSYS/Cygwin, convert to a
+# native Windows path with cygpath; on real POSIX systems (Linux/macOS/WSL) cygpath is absent, so
+# this is a transparent pass-through — no behavior change there.
+to_hermes_path() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi
+}
+
 list_profiles() {
   local found=0 d name desc
   for d in "$REPO_ROOT"/dist/*/; do
@@ -190,8 +210,10 @@ install_profile() {
   }
   profile="${NAME:-$persona}"
   # Choose how to apply: NEW isolated profile (default) or EXTEND current/default (issue #2).
-  # Interactive tty only — piped or --yes runs keep the isolated-profile default.
-  if [ "$ASSUME_YES" = 0 ] && [ -t 0 ]; then
+  # Explicit --new/--extend win; otherwise prompt on an interactive tty; otherwise (piped / --yes)
+  # keep the isolated-profile default so unattended agent/CI runs never hang on `read`.
+  local apply_mode="$MODE"
+  if [ -z "$apply_mode" ] && [ "$ASSUME_YES" = 0 ] && [ -t 0 ]; then
     echo
     echo "How do you want to apply '$persona'?"
     echo "  [1] New isolated profile '$profile' (recommended) — its own sessions + auth; current profile untouched."
@@ -199,13 +221,18 @@ install_profile() {
     echo "      (A new isolated profile starts with empty history; your existing history stays in its own profile, reachable via 'hermes -p <old>'.)"
     printf 'Choose [1/2] (default: 1): '
     read -r mode || mode=""
-    if [ "$mode" = 2 ]; then
-      local bootstrap="$REPO_ROOT/bootstrap.sh"
-      [ -f "$bootstrap" ] || { echo "bootstrap.sh not found at $bootstrap" >&2; exit 1; }
-      echo "Extending the current/default profile via bootstrap ..."
-      if [ "$PRO" = 1 ]; then bash "$bootstrap" --template "$persona" --portal; else bash "$bootstrap" --template "$persona"; fi
-      exit $?
-    fi
+    [ "$mode" = 2 ] && apply_mode="extend"
+  fi
+  if [ "$apply_mode" = extend ]; then
+    local bootstrap="$REPO_ROOT/bootstrap.sh"
+    [ -f "$bootstrap" ] || { echo "bootstrap.sh not found at $bootstrap" >&2; exit 1; }
+    echo "Extending the current/default profile via bootstrap ..."
+    # Forward non-interactivity so bootstrap's own skill-install / setup-step prompts don't hang.
+    local bs_args=(--template "$persona")
+    [ "$PRO" = 1 ] && bs_args+=(--portal)
+    [ "$ASSUME_YES" = 1 ] && bs_args+=(--yes)
+    bash "$bootstrap" "${bs_args[@]}"
+    exit $?
   fi
   # Preflight: fail clearly on a name collision instead of hanging on a Hermes prompt.
   if hermes profile list 2>/dev/null | grep -Eq "(^|[[:space:]])${profile}([[:space:]]|\$)"; then
@@ -218,12 +245,15 @@ install_profile() {
   HOME_ROOT="$(hermes_home_root)"
   AUTH_BEFORE="$(auth_corrupt_stamp "$HOME_ROOT")"
   echo "Installing '$persona' as Hermes profile '$profile' from $src ..."
+  # Pass the source as a NATIVE path so a Windows `hermes` can resolve it (POSIX pass-through
+  # elsewhere). Bash-side operations above/below keep using $src (the POSIX form).
+  local src_native; src_native="$(to_hermes_path "$src")"
   # Auto-confirm Hermes' own install prompt whenever we're NOT interactive (either --yes, or stdin is
   # not a tty). Otherwise `hermes profile install` would block waiting for input and hang.
   if [ "$ASSUME_YES" = 1 ] || [ ! -t 0 ]; then
-    hermes profile install "$src" --name "$profile" --yes
+    hermes profile install "$src_native" --name "$profile" --yes
   else
-    hermes profile install "$src" --name "$profile"
+    hermes profile install "$src_native" --name "$profile"
   fi
   copy_meta_skill_fallback "$src"
 }

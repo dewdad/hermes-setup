@@ -115,7 +115,7 @@ Use this when you want the persona isolated from the default profile. Every name
 
 2. **Run the optional external-skills prep step above** (best-effort, ignore failure).
 
-3. **Install the profile — prefer the bundled installer.** Run `install.ps1` / `install.sh` rather than a bare `hermes profile install`: the installer wraps `hermes profile install` (same env-var check, skill security scan, `.env.EXAMPLE` generation) **and** additionally seeds the stable `~/.hermes-setup/meta-skills` fallback so `/finish-setup` registers on every surface (default profile, gateway, Desktop), offers the new-isolated-vs-extend choice, and prints the per-profile-sessions note. Pass `-Yes` / `--yes` for an unattended run (also auto-skips the prompt), and `-Name` / `--name` to choose the profile name:
+3. **Install the profile — prefer the bundled installer.** Run `install.ps1` / `install.sh` rather than a bare `hermes profile install`: the installer wraps `hermes profile install` (same env-var check, skill security scan, `.env.EXAMPLE` generation) **and** additionally seeds the stable `~/.hermes-setup/meta-skills` fallback so `/finish-setup` registers on every surface (default profile, gateway, Desktop), offers the new-isolated-vs-extend choice, and prints the per-profile-sessions note. That choice can also be made non-interactively: `-New` / `--new` forces a new isolated profile, `-Extend` / `--extend` merges into the current/default profile via `bootstrap` (an agent should ASK the user which they want, then pass the matching flag). Pass `-Yes` / `--yes` for an unattended run (also auto-skips the prompt), and `-Name` / `--name` to choose the profile name:
 
    ```powershell
    .\install.ps1 general -Name my-general -Yes

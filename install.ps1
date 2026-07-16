@@ -19,6 +19,12 @@
 .PARAMETER Name
   Hermes profile name to install under. Default: <Persona>.
 
+.PARAMETER New
+  Force a NEW isolated profile (skip the prompt; the default when neither -New nor -Extend is given).
+
+.PARAMETER Extend
+  MERGE into your current/default profile via bootstrap (skip the prompt). Mutually exclusive with -New.
+
 .PARAMETER Yes
   Pass --yes to `hermes profile install` (no confirmation prompt).
 
@@ -42,6 +48,8 @@ param(
   [Parameter(Position = 0)][string]$Persona,
   [switch]$List,
   [string]$Name,
+  [switch]$New,
+  [switch]$Extend,
   [switch]$Yes,
   [switch]$Pro,
   [string]$Repo
@@ -49,6 +57,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 if (-not $Repo) { $Repo = $env:HERMES_SETUP_REPO }
+if ($New -and $Extend) { Write-Error '-New and -Extend are mutually exclusive.' }
 
 # Derive a downloadable GitHub archive URL from the given repo URL (default branch via HEAD).
 # Returns $null for non-GitHub hosts, where no generic archive scheme exists. No org is baked in —
@@ -296,23 +305,29 @@ $profileName = if ($Name) { $Name } else { $Persona }
 $Interactive = (-not $Yes) -and (-not [System.Console]::IsInputRedirected)
 
 # Choose how to apply: a NEW isolated profile (default) or EXTEND the current/default profile
-# (issue #2). Interactive only — non-interactive / -Yes keeps the isolated-profile default.
-if ($Interactive) {
+# (issue #2). Explicit -New/-Extend win; otherwise prompt on an interactive console; otherwise
+# (redirected stdin / -Yes) keep the isolated-profile default so unattended runs never hang.
+$applyMode = if ($New) { 'new' } elseif ($Extend) { 'extend' } else { '' }
+if ((-not $applyMode) -and $Interactive) {
   Write-Host ''
   Write-Host "How do you want to apply '$Persona'?"
   Write-Host "  [1] New isolated profile '$profileName' (recommended) — its own sessions + auth; your current profile stays untouched."
   Write-Host "  [2] Extend your CURRENT / default profile — inherit its existing sessions, auth, and skills."
   Write-Host "      (A new isolated profile starts with empty history; your existing history stays in its own profile, reachable via 'hermes -p <old>'.)"
   $mode = (Read-Host "Choose [1/2] (default: 1)").Trim()
-  if ($mode -eq '2') {
-    $bootstrap = Join-Path $RepoRoot 'bootstrap.ps1'
-    if (-not (Test-Path -LiteralPath $bootstrap)) { Write-Error "bootstrap.ps1 not found at $bootstrap" }
-    Write-Host "Extending the current/default profile via bootstrap ..."
-    # Explicit named args — array splatting would pass '-Template' as a POSITIONAL value.
-    if ($Pro) { & $bootstrap -Template $Persona -Portal }
-    else { & $bootstrap -Template $Persona }
-    exit $LASTEXITCODE
-  }
+  if ($mode -eq '2') { $applyMode = 'extend' }
+}
+if ($applyMode -eq 'extend') {
+  $bootstrap = Join-Path $RepoRoot 'bootstrap.ps1'
+  if (-not (Test-Path -LiteralPath $bootstrap)) { Write-Error "bootstrap.ps1 not found at $bootstrap" }
+  Write-Host "Extending the current/default profile via bootstrap ..."
+  # Forward non-interactivity so bootstrap's own skill-install / setup-step prompts don't hang.
+  # Explicit named args — array splatting would pass '-Template' as a POSITIONAL value.
+  if ($Pro -and $Yes) { & $bootstrap -Template $Persona -Portal -Yes }
+  elseif ($Pro)       { & $bootstrap -Template $Persona -Portal }
+  elseif ($Yes)       { & $bootstrap -Template $Persona -Yes }
+  else                { & $bootstrap -Template $Persona }
+  exit $LASTEXITCODE
 }
 
 # Preflight: fail clearly on a name collision instead of hanging on a Hermes prompt.

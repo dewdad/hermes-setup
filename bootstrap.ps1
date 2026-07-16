@@ -8,11 +8,14 @@
 .DESCRIPTION
   Sources from dist/<template> (produced by `python -m configurator compile <template>`).
   Merge semantics (never destructive to your data):
-    * config.yaml   -> existing file backed up to config.yaml.bak.<timestamp>, then replaced
+    * config.yaml   -> backed up, then KEY-MERGED via `configurator merge-config` (adds new keys,
+                       keeps your existing values, prompts on conflicts; an uncustomized target is
+                       overwritten). Falls back to preserve-or-overwrite-if-pristine without Python.
     * SOUL.md       -> only written if missing / still the default marker / -Force
     * skills/       -> distribution skills merged in; your other skills are untouched
     * skill-bundles/, cron/, mcp.json -> merged/copied if the distribution ships them
-    * .env          -> created from the distribution's .env.EXAMPLE ONLY if missing
+    * .env          -> created from .env.EXAMPLE if missing; else missing key placeholders appended
+                       (existing values never touched or printed)
   A full backup (hermes backup, or a zip fallback) is taken first unless -SkipBackup.
   Provisions the free open-skills catalogue at ~/open-skills and the free Google Workspace CLI at
   ~/multi-gws-cli (clone + npm build) by default so both are ready on first use; both are tolerated
@@ -101,13 +104,6 @@ function New-Dir($path) {
   New-Item -ItemType Directory -Force -Path $path | Out-Null
 }
 
-function Get-EnvKeys($file) {
-  if (-not (Test-Path -LiteralPath $file)) { return @() }
-  Get-Content -LiteralPath $file |
-    Where-Object { $_ -match '^\s*[^#\s][^=]*=' } |
-    ForEach-Object { ($_ -split '=', 2)[0].Trim() }
-}
-
 function Copy-Tree($srcRoot, $dstRoot, $label) {
   # Merge a directory tree file-by-file (never deletes existing files in the target).
   if (-not (Test-Path -LiteralPath $srcRoot)) { return }
@@ -121,6 +117,168 @@ function Copy-Tree($srcRoot, $dstRoot, $label) {
     Write-Ok "$label`: $rel"
   }
 }
+
+# --- Robust config.yaml + .env merge (EXTEND path) ------------------------------------------------
+# config.yaml is deep-merged by the PURE `configurator merge-config` engine (adds new keys/sub-keys,
+# keeps existing values on conflict, unions known lists); an uncustomized target is overwritten. .env
+# is merged here (append missing key placeholders; existing values NEVER touched or printed).
+
+function Get-PyBin {
+  # A Python (with PyYAML) that can run the merge engine, or $null if none is available.
+  foreach ($c in @('python', 'python3', 'py')) {
+    $cmd = Get-Command $c -ErrorAction SilentlyContinue
+    if ($cmd) { try { & $cmd.Source -c 'import yaml' 2>$null; if ($LASTEXITCODE -eq 0) { return $cmd.Source } } catch { } }
+  }
+  return $null
+}
+
+function Get-RawSha256($file) {
+  if (-not (Test-Path -LiteralPath $file)) { return '' }
+  return (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLower()
+}
+
+function Write-ConfigProvenance($normHash, $rawHash) {
+  $stateDir = Join-Path $Target '.hermes-setup'
+  New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+  $obj = [ordered]@{ config = [ordered]@{
+    source_profile                 = $TemplateName
+    last_written_normalized_sha256 = $normHash
+    last_written_config_sha256     = $rawHash
+    written_at                     = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+  } }
+  ($obj | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath (Join-Path $stateDir 'profile-state.json') -Encoding utf8
+}
+
+function Invoke-ConfigNoPython($existing, $incoming, $default, $prov) {
+  # Degraded path: overwrite ONLY when provably pristine by provenance/default; else preserve.
+  $cur = Get-RawSha256 $existing; $def = Get-RawSha256 $default; $provRaw = ''
+  if (Test-Path -LiteralPath $prov) {
+    try { $provRaw = ((Get-Content -LiteralPath $prov -Raw | ConvertFrom-Json).config.last_written_config_sha256) } catch { }
+  }
+  if ($cur -and (($cur -eq $provRaw) -or ($def -and ($cur -eq $def)))) {
+    Copy-Item -LiteralPath $incoming -Destination $existing -Force
+    Write-Ok "config.yaml replaced (uncustomized target; Python/PyYAML unavailable for a key-level merge)"
+    Write-ConfigProvenance '' (Get-RawSha256 $existing)
+  } else {
+    Write-Warn2 "Python/PyYAML not found and config.yaml looks customized — left it UNCHANGED (no merge)."
+    Write-Warn2 "Install Python 3.11+ with PyYAML and re-run to merge, or compare manually against: $incoming"
+  }
+}
+
+function Merge-ConfigYaml {
+  $existing  = Join-Path $Target 'config.yaml'
+  $incoming  = Join-Path $SourceHome 'config.yaml'
+  $default   = Join-Path $RepoRoot 'dist\general\config.yaml'
+  $stateDir  = Join-Path $Target '.hermes-setup'
+  $prov      = Join-Path $stateDir 'profile-state.json'
+  $candidate = Join-Path $stateDir 'config.yaml.candidate'
+
+  if (-not (Test-Path -LiteralPath $existing)) {
+    if ($DryRun) { Write-Info "[dry-run] copy config.yaml (new profile)"; return }
+    Copy-Item -LiteralPath $incoming -Destination $existing -Force; Write-Ok "wrote config.yaml (new profile)"
+    $py = Get-PyBin
+    if ($py) {
+      $j = (& $py -m configurator merge-config plan --existing $existing --incoming $incoming 2>$null) | ConvertFrom-Json
+      Write-ConfigProvenance $j.normalized_sha256 (Get-RawSha256 $existing)
+    }
+    return
+  }
+
+  $bak = "$existing.bak.$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+  if ($DryRun) { Write-Info "[dry-run] back up config.yaml, then merge (add keys, keep existing, prompt conflicts)"; return }
+  Copy-Item -LiteralPath $existing -Destination $bak -Force; Write-Ok "backed up existing -> $(Split-Path -Leaf $bak)"
+
+  $py = Get-PyBin
+  if (-not $py) { Invoke-ConfigNoPython $existing $incoming $default $prov; return }
+  New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+
+  Push-Location $RepoRoot
+  try { $out = & $py -m configurator merge-config plan --existing $existing --incoming $incoming --default $default --provenance $prov --candidate $candidate 2>$null }
+  finally { Pop-Location }
+  if ($LASTEXITCODE -ne 0 -or -not $out) { Write-Warn2 "config merge planner failed — kept existing config.yaml (backup: $(Split-Path -Leaf $bak))."; return }
+  $plan = $out | ConvertFrom-Json
+
+  if ($plan.strategy -ne 'merge') {
+    Copy-Item -LiteralPath $candidate -Destination $existing -Force
+    Write-Ok "config.yaml replaced (uncustomized target — adopted the distribution's config)"
+    Write-ConfigProvenance $plan.normalized_sha256 (Get-RawSha256 $existing); return
+  }
+
+  Write-Info ("config merge: +{0} new key(s), {1} list addition(s), existing values preserved" -f @($plan.added).Count, @($plan.list_appended).Count)
+  foreach ($w in @($plan.warnings)) { Write-Warn2 $w }
+
+  $conflicts = @($plan.conflicts)
+  if ($conflicts.Count -eq 0) {
+    Copy-Item -LiteralPath $candidate -Destination $existing -Force; Write-Ok "merged config.yaml (no conflicts)"
+    Write-ConfigProvenance $plan.normalized_sha256 (Get-RawSha256 $existing); return
+  }
+
+  $interactive = (-not $Yes) -and (-not [System.Console]::IsInputRedirected)
+  if (-not $interactive) {
+    Copy-Item -LiteralPath $candidate -Destination $existing -Force
+    Write-Warn2 "merged config.yaml; KEPT EXISTING value for $($conflicts.Count) conflicting key(s) (re-run interactively to choose):"
+    foreach ($c in $conflicts) { Write-Info "  $($c.path)" }
+    Write-ConfigProvenance $plan.normalized_sha256 (Get-RawSha256 $existing); return
+  }
+
+  Write-Host ''
+  Write-Info "$($conflicts.Count) config conflict(s) — keep your EXISTING value or take the distribution's for each:"
+  $decisions = @()
+  foreach ($c in $conflicts) {
+    $ev = if ($c.sensitive) { '<redacted>' } else { $c.existing_preview }
+    $iv = if ($c.sensitive) { '<redacted>' } else { $c.incoming_preview }
+    Write-Host "  $($c.path)"
+    Write-Host "    [k] keep existing: $ev"
+    Write-Host "    [t] take distribution: $iv"
+    $ans = Read-Host "  choose [k/t] (default k)"
+    $choice = if ($ans -match '^[tT]') { 'incoming' } else { 'existing' }
+    $decisions += [ordered]@{ path = $c.path; choice = $choice }
+  }
+  $decPath = Join-Path $stateDir 'decisions.json'
+  (@{ schema = 1; decisions = @($decisions) } | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $decPath -Encoding utf8
+  $outPath = Join-Path $stateDir 'config.yaml.final'
+  Push-Location $RepoRoot
+  try { $ao = & $py -m configurator merge-config apply-decisions --existing $existing --incoming $incoming --decisions $decPath --out $outPath 2>$null }
+  finally { Pop-Location }
+  if ($LASTEXITCODE -eq 0 -and $ao) {
+    Copy-Item -LiteralPath $outPath -Destination $existing -Force; Write-Ok "merged config.yaml with your choices"
+    Write-ConfigProvenance ($ao | ConvertFrom-Json).normalized_sha256 (Get-RawSha256 $existing)
+    Remove-Item -LiteralPath $decPath, $outPath, $candidate -Force -ErrorAction SilentlyContinue
+  } else {
+    Write-Warn2 "applying merge decisions failed — kept existing config.yaml (backup: $(Split-Path -Leaf $bak))."
+  }
+}
+
+function Get-EnvMergeKeys($file) {
+  # Key NAMES referenced by an env file, INCLUDING commented `# KEY=` placeholders (.env.EXAMPLE form).
+  if (-not (Test-Path -LiteralPath $file)) { return @() }
+  Get-Content -LiteralPath $file |
+    Where-Object { $_ -match '^\s*#?\s*[A-Za-z_][A-Za-z0-9_]*=' } |
+    ForEach-Object { (($_ -replace '^\s*#?\s*', '') -split '=', 2)[0].Trim() } |
+    Sort-Object -Unique
+}
+
+function Merge-EnvFile {
+  $dst = Join-Path $Target '.env'
+  if (-not (Test-Path -LiteralPath $EnvExample)) { Write-Skip "distribution ships no .env.EXAMPLE (no keys required)"; return }
+  if (-not (Test-Path -LiteralPath $dst)) {
+    if ($DryRun) { Write-Info "[dry-run] create .env from .env.EXAMPLE" }
+    else { Copy-Item -LiteralPath $EnvExample -Destination $dst -Force; Write-Ok "created .env from template — EDIT IT to add your keys" }
+    return
+  }
+  $have = Get-EnvMergeKeys $dst
+  $missing = @(Get-EnvMergeKeys $EnvExample | Where-Object { $_ -notin $have })
+  if ($missing.Count -eq 0) { Write-Ok "existing .env preserved; all template keys already present"; return }
+  if ($DryRun) { Write-Info "[dry-run] append $($missing.Count) new key placeholder(s) to .env (existing values untouched)"; return }
+  $lines = @('',
+    "# --- added by hermes-setup ($TemplateName): new optional keys from this distribution ---",
+    '# See .env.EXAMPLE for descriptions. Your existing values above were left untouched.')
+  foreach ($k in $missing) { $lines += "# $k=" }
+  Add-Content -LiteralPath $dst -Value $lines -Encoding utf8
+  Write-Ok "appended $($missing.Count) new optional key placeholder(s) to .env (existing values preserved)"
+  foreach ($k in $missing) { Write-Info "    $k" }
+}
+# --------------------------------------------------------------------------------------------------
 
 Write-Host "Hermes Agent — apply distribution '$TemplateName'" -ForegroundColor White
 if ($DryRun) { Write-Warn2 "DRY RUN — no changes will be written." }
@@ -161,16 +319,8 @@ try {
     }
   }
 
-  Write-Step "config.yaml"
-  $srcCfg = Join-Path $SourceHome 'config.yaml'
-  $dstCfg = Join-Path $Target 'config.yaml'
-  if (Test-Path -LiteralPath $dstCfg) {
-    $bak = "$dstCfg.bak.$(Get-Date -Format 'yyyyMMdd_HHmmss')"
-    if ($DryRun) { Write-Info "[dry-run] backup existing -> $bak; then replace" }
-    else { Copy-Item -LiteralPath $dstCfg -Destination $bak -Force; Write-Ok "backed up existing -> $(Split-Path -Leaf $bak)" }
-  }
-  if ($DryRun) { Write-Info "[dry-run] copy config.yaml -> $dstCfg" }
-  else { Copy-Item -LiteralPath $srcCfg -Destination $dstCfg -Force; Write-Ok "wrote config.yaml" }
+  Write-Step "config.yaml (merge)"
+  Merge-ConfigYaml
 
   Write-Step "SOUL.md"
   $srcSoul = Join-Path $SourceHome 'SOUL.md'
@@ -250,18 +400,8 @@ try {
     }
   }
 
-  Write-Step ".env"
-  $dstEnv = Join-Path $Target '.env'
-  if (-not (Test-Path -LiteralPath $EnvExample)) {
-    Write-Skip "distribution ships no .env.EXAMPLE (no keys required)"
-  } elseif (-not (Test-Path -LiteralPath $dstEnv)) {
-    if ($DryRun) { Write-Info "[dry-run] create .env from .env.EXAMPLE" }
-    else { Copy-Item -LiteralPath $EnvExample -Destination $dstEnv -Force; Write-Ok "created .env from template — EDIT IT to add your keys" }
-  } else {
-    $missing = (Get-EnvKeys $EnvExample) | Where-Object { $_ -notin (Get-EnvKeys $dstEnv) }
-    if ($missing) { Write-Warn2 "existing .env preserved. Template keys not present:"; $missing | ForEach-Object { Write-Info "    $_" } }
-    else { Write-Ok "existing .env preserved; all template keys present" }
-  }
+  Write-Step ".env (merge)"
+  Merge-EnvFile
 
   Write-Step "Paid Nous Portal base (-Portal)"
   if (-not $Portal) { Write-Skip "not requested (free chain is the default)" }

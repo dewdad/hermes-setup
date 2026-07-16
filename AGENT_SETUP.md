@@ -256,13 +256,13 @@ Use this when you want the persona to *become* your default Hermes install (sing
    | Target file | Fresh install | Existing install |
    | --- | --- | --- |
    | Safety backup | skipped | `hermes backup` (or zip/tar fallback) |
-   | `config.yaml` | written | existing → `config.yaml.bak.<timestamp>`, then replaced |
+   | `config.yaml` | written | backed up → `config.yaml.bak.<timestamp>`, then **key-merged** (adds new keys, keeps your values, prompts on conflicts; an uncustomized config is overwritten). Needs Python+PyYAML; without it, overwrites only when provably pristine, else preserves. |
    | `SOUL.md` | written | **preserved** unless it still contains the unconfigured marker |
    | `skills/` | copied only if the dist ships one | **merged** — other skills never deleted (reference-only personas ship no `skills/`, so this is normally a no-op) |
    | Referenced skills | auto-installed from `skills.install.json` (with your confirmation) | same — `hermes skills install` / `tap add`, failure-tolerant |
    | `~/open-skills` | cloned (bonus catalogue; needs git) | fast-forward pull |
    | `~/multi-gws-cli` | cloned + `npm install` + `npm run build` (Google Workspace CLI; needs Node.js + git) | fast-forward pull + rebuild |
-   | `.env` | created from generated `.env.EXAMPLE` | **never overwritten**; missing keys are reported |
+   | `.env` | created from generated `.env.EXAMPLE` | **existing values never touched/printed**; missing template keys appended as commented placeholders |
 
    Flags: `-DryRun` / `--dry-run`, `-Force` / `--force`, `-SkipBackup` / `--skip-backup`, `-SkipSkills` / `--skip-skills`, `-SkipOpenSkills` / `--skip-open-skills`, `-SkipGws` / `--skip-gws` (skip the `~/multi-gws-cli` Google Workspace clone+build), `-SkipSkillsInstall` / `--skip-skills-install`, `-Yes` / `--yes` (auto-confirm the referenced-skill install prompt), `-HermesHome PATH` / `--hermes-home PATH`. The template flag is `-Template <name>` / `--template <name>` and defaults to `base/general` — do **not** invent other flag names.
 

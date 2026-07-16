@@ -4,10 +4,13 @@
 #   hermes profile install ./dist/<name> --name <profile>
 #
 # Merge semantics (never destructive to your data):
-#   config.yaml   -> existing backed up to config.yaml.bak.<ts>, then replaced
+#   config.yaml   -> backed up, then KEY-MERGED via `configurator merge-config` (adds new keys,
+#                    keeps your existing values, prompts on conflicts; uncustomized target overwritten).
+#                    Without Python/PyYAML: overwrite only if provably pristine, else preserved.
 #   SOUL.md       -> only written if missing / still the default marker / --force
 #   skills/, skill-bundles/, cron/, mcp.json -> merged/copied if the distribution ships them
-#   .env          -> created from the distribution's .env.EXAMPLE ONLY if missing
+#   .env          -> created from .env.EXAMPLE if missing; else missing key placeholders appended
+#                    (existing values never touched or printed)
 # A backup (hermes backup, or a tar fallback) runs first unless --skip-backup.
 # Provisions the free open-skills catalogue at ~/open-skills and the free Google Workspace CLI at
 # ~/multi-gws-cli (clone + npm build) by default so both are ready on first use; both are tolerated
@@ -81,8 +84,6 @@ resolve_home() {
   echo "$HOME/.hermes"
 }
 
-env_keys() { [ -f "$1" ] && grep -E '^[[:space:]]*[^#[:space:]][^=]*=' "$1" | sed -E 's/[[:space:]]*=.*//' || true; }
-
 copy_tree() { # src dst label
   local src="$1" dst="$2" label="$3"
   [ -d "$src" ] || return 0
@@ -92,6 +93,158 @@ copy_tree() { # src dst label
     mkdir -p "$(dirname "$dest")"; cp -f "$f" "$dest"; ok "$label: $rel"
   done < <(find "$src" -type f -print0)
 }
+
+# --- Robust config.yaml + .env merge (EXTEND path) ------------------------------------------------
+# config.yaml is deep-merged by the PURE `configurator merge-config` engine (adds new keys/sub-keys,
+# keeps existing values on conflict, unions known lists); an uncustomized target is overwritten. .env
+# is merged here in shell (append missing key placeholders; existing values NEVER touched or printed).
+
+PYBIN=""
+# A Python (with PyYAML) that can run the merge engine, or empty if none is available.
+detect_python() {
+  local c
+  for c in python3 python; do
+    if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import yaml' >/dev/null 2>&1; then PYBIN="$c"; return 0; fi
+  done
+  PYBIN=""; return 1
+}
+
+# Raw file sha256 (shell-only; the no-Python pristine check + provenance). Empty if no hasher/file.
+raw_sha256() {
+  [ -f "$1" ] || return 0
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
+  elif command -v certutil >/dev/null 2>&1; then certutil -hashfile "$1" SHA256 2>/dev/null | sed -n 2p | tr -d '[:space:]'; fi
+}
+
+# Pull one scalar field out of the planner JSON using the Python we already require for merging.
+json_scalar() { printf '%s' "$1" | "$PYBIN" -c 'import sys,json; print(json.load(sys.stdin).get(sys.argv[1],""))' "$2"; }
+
+# Key NAMES referenced by an env file, INCLUDING commented `# KEY=` placeholders (.env.EXAMPLE form).
+env_merge_keys() { [ -f "$1" ] && grep -E '^[[:space:]]*#?[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' "$1" | sed -E 's/^[[:space:]]*#?[[:space:]]*//; s/=.*//' | sort -u || true; }
+
+# Provenance sidecar so a later run can detect an untouched config and safely overwrite it.
+write_config_provenance() { # normalized_hash raw_hash
+  local state_dir="$TARGET/.hermes-setup"
+  mkdir -p "$state_dir" 2>/dev/null || return 0
+  printf '{\n  "config": {\n    "source_profile": "%s",\n    "last_written_normalized_sha256": "%s",\n    "last_written_config_sha256": "%s",\n    "written_at": "%s"\n  }\n}\n' \
+    "$TEMPLATE_NAME" "$1" "$2" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$state_dir/profile-state.json"
+}
+
+# Degraded config merge when no Python/PyYAML: overwrite ONLY if provably pristine, else preserve.
+handle_config_no_python() { # existing incoming default prov
+  local cur def prov_raw=""
+  cur="$(raw_sha256 "$1")"; def="$(raw_sha256 "$3")"
+  [ -f "$4" ] && prov_raw="$(sed -n 's/.*"last_written_config_sha256": *"\([^"]*\)".*/\1/p' "$4" | head -n1)"
+  if [ -n "$cur" ] && { [ "$cur" = "$prov_raw" ] || { [ -n "$def" ] && [ "$cur" = "$def" ]; }; }; then
+    cp -f "$2" "$1"; ok "config.yaml replaced (uncustomized target; Python/PyYAML unavailable for a key-level merge)"
+    write_config_provenance "" "$(raw_sha256 "$1")"
+  else
+    warn "Python/PyYAML not found and config.yaml looks customized — left it UNCHANGED (no merge)."
+    warn "Install Python 3.11+ with PyYAML and re-run to merge, or compare manually against: $2"
+  fi
+}
+
+# Deep-merge the distribution config.yaml into the live one (add keys, keep existing, prompt conflicts).
+merge_config_yaml() {
+  local existing="$TARGET/config.yaml" incoming="$SOURCE_HOME/config.yaml"
+  local default="$REPO_ROOT/dist/general/config.yaml"
+  local state_dir="$TARGET/.hermes-setup" prov="$TARGET/.hermes-setup/profile-state.json"
+  local candidate="$TARGET/.hermes-setup/config.yaml.candidate"
+
+  if [ ! -f "$existing" ]; then
+    if [ "$DRY_RUN" = 1 ]; then info "[dry-run] copy config.yaml (new profile)"; return; fi
+    mkdir -p "$TARGET"; cp -f "$incoming" "$existing"; ok "wrote config.yaml (new profile)"
+    if detect_python; then
+      local nh; nh="$( ( cd "$REPO_ROOT" && "$PYBIN" -m configurator merge-config plan --existing "$existing" --incoming "$incoming" 2>/dev/null ) )"
+      write_config_provenance "$(json_scalar "$nh" normalized_sha256)" "$(raw_sha256 "$existing")"
+    fi
+    return
+  fi
+
+  local bak="$existing.bak.$(date +%Y%m%d_%H%M%S)"
+  if [ "$DRY_RUN" = 1 ]; then info "[dry-run] back up config.yaml, then merge (add keys, keep existing, prompt conflicts)"; return; fi
+  cp -f "$existing" "$bak"; ok "backed up existing -> $(basename "$bak")"
+
+  if ! detect_python; then handle_config_no_python "$existing" "$incoming" "$default" "$prov"; return; fi
+  mkdir -p "$state_dir"
+
+  local plan
+  if ! plan="$( ( cd "$REPO_ROOT" && "$PYBIN" -m configurator merge-config plan --existing "$existing" --incoming "$incoming" --default "$default" --provenance "$prov" --candidate "$candidate" ) 2>/dev/null )"; then
+    warn "config merge planner failed — kept existing config.yaml (backup: $(basename "$bak"))."; return
+  fi
+  local strategy nh; strategy="$(json_scalar "$plan" strategy)"; nh="$(json_scalar "$plan" normalized_sha256)"
+
+  if [ "$strategy" != merge ]; then
+    cp -f "$candidate" "$existing"; ok "config.yaml replaced (uncustomized target — adopted the distribution's config)"
+    write_config_provenance "$nh" "$(raw_sha256 "$existing")"; return
+  fi
+
+  local nadd nlist; nadd="$(printf '%s' "$plan" | "$PYBIN" -c 'import sys,json;print(len(json.load(sys.stdin)["added"]))')"
+  nlist="$(printf '%s' "$plan" | "$PYBIN" -c 'import sys,json;print(len(json.load(sys.stdin)["list_appended"]))')"
+  info "config merge: +${nadd} new key(s), ${nlist} list addition(s), existing values preserved"
+  printf '%s' "$plan" | "$PYBIN" -c 'import sys,json;[print(w) for w in json.load(sys.stdin)["warnings"]]' | while IFS= read -r w; do [ -n "$w" ] && warn "$w"; done
+
+  local conflicts; conflicts="$(printf '%s' "$plan" | "$PYBIN" -c 'import sys,json'$'\n''for c in json.load(sys.stdin)["conflicts"]: print("\t".join([c["path"],"1" if c["sensitive"] else "0",str(c["existing_preview"]),str(c["incoming_preview"])]))')"
+  if [ -z "$conflicts" ]; then
+    cp -f "$candidate" "$existing"; ok "merged config.yaml (no conflicts)"
+    write_config_provenance "$nh" "$(raw_sha256 "$existing")"; return
+  fi
+  local nc; nc="$(printf '%s\n' "$conflicts" | grep -c .)"
+
+  if [ "$ASSUME_YES" = 1 ] || [ ! -t 0 ]; then
+    cp -f "$candidate" "$existing"
+    warn "merged config.yaml; KEPT EXISTING value for $nc conflicting key(s) (re-run interactively to choose):"
+    printf '%s\n' "$conflicts" | while IFS="$(printf '\t')" read -r p s ev iv; do [ -n "$p" ] && info "  $p"; done
+    write_config_provenance "$nh" "$(raw_sha256 "$existing")"; return
+  fi
+
+  echo; info "$nc config conflict(s) — keep your EXISTING value or take the distribution's for each:"
+  local decisions='{"schema":1,"decisions":[' first=1
+  while IFS="$(printf '\t')" read -r p s ev iv; do
+    [ -n "$p" ] || continue
+    if [ "$s" = 1 ]; then ev="<redacted>"; iv="<redacted>"; fi
+    printf '  %s\n    [k] keep existing: %s\n    [t] take distribution: %s\n  choose [k/t] (default k): ' "$p" "$ev" "$iv"
+    local ans=""; read -r ans </dev/tty || ans=""
+    local choice="existing"; case "$ans" in t|T) choice="incoming";; esac
+    [ "$first" = 1 ] || decisions="$decisions,"; first=0
+    decisions="$decisions{\"path\":\"$p\",\"choice\":\"$choice\"}"
+  done <<EOF
+$conflicts
+EOF
+  decisions="$decisions]}"
+  printf '%s' "$decisions" > "$state_dir/decisions.json"
+  local apply
+  if apply="$( ( cd "$REPO_ROOT" && "$PYBIN" -m configurator merge-config apply-decisions --existing "$existing" --incoming "$incoming" --decisions "$state_dir/decisions.json" --out "$state_dir/config.yaml.final" ) 2>/dev/null )"; then
+    cp -f "$state_dir/config.yaml.final" "$existing"; ok "merged config.yaml with your choices"
+    write_config_provenance "$(json_scalar "$apply" normalized_sha256)" "$(raw_sha256 "$existing")"
+    rm -f "$state_dir/decisions.json" "$state_dir/config.yaml.final" "$candidate" 2>/dev/null || true
+  else
+    warn "applying merge decisions failed — kept existing config.yaml (backup: $(basename "$bak"))."
+  fi
+}
+
+# Merge .env: append placeholders for template keys the user's .env lacks; never touch/print values.
+merge_env_file() {
+  local example="$ENV_EXAMPLE" dst="$TARGET/.env"
+  if [ ! -f "$example" ]; then skip "distribution ships no .env.EXAMPLE (no keys required)"; return; fi
+  if [ ! -f "$dst" ]; then
+    if [ "$DRY_RUN" = 1 ]; then info "[dry-run] create .env from .env.EXAMPLE"; else cp -f "$example" "$dst"; ok "created .env from template — EDIT IT to add your keys"; fi
+    return
+  fi
+  local missing; missing="$(comm -23 <(env_merge_keys "$example") <(env_merge_keys "$dst") || true)"
+  if [ -z "$missing" ]; then ok "existing .env preserved; all template keys already present"; return; fi
+  local n; n="$(printf '%s\n' "$missing" | grep -c .)"
+  if [ "$DRY_RUN" = 1 ]; then info "[dry-run] append $n new key placeholder(s) to .env (existing values untouched)"; return; fi
+  {
+    printf '\n# --- added by hermes-setup (%s): new optional keys from this distribution ---\n' "$TEMPLATE_NAME"
+    printf '# See .env.EXAMPLE for descriptions. Your existing values above were left untouched.\n'
+    printf '%s\n' "$missing" | while IFS= read -r k; do [ -n "$k" ] && printf '# %s=\n' "$k"; done
+  } >> "$dst"
+  ok "appended $n new optional key placeholder(s) to .env (existing values preserved)"
+  printf '%s\n' "$missing" | sed 's/^/    /'
+}
+# --------------------------------------------------------------------------------------------------
 
 echo "Hermes Agent — apply distribution '$TEMPLATE_NAME'"
 [ "$DRY_RUN" = 1 ] && warn "DRY RUN — no changes will be written."
@@ -121,12 +274,8 @@ else
   if [ "$done_bk" = 0 ]; then tarf="$(mktemp -t hermes-home-backup.XXXXXX).tar.gz"; tar -czf "$tarf" -C "$TARGET" . && ok "tar backup: $tarf"; fi
 fi
 
-step "config.yaml"
-if [ -f "$TARGET/config.yaml" ]; then
-  bak="$TARGET/config.yaml.bak.$(date +%Y%m%d_%H%M%S)"
-  if [ "$DRY_RUN" = 1 ]; then info "[dry-run] backup existing -> $bak; then replace"; else cp -f "$TARGET/config.yaml" "$bak"; ok "backed up existing -> $(basename "$bak")"; fi
-fi
-if [ "$DRY_RUN" = 1 ]; then info "[dry-run] copy config.yaml"; else cp -f "$SOURCE_HOME/config.yaml" "$TARGET/config.yaml"; ok "wrote config.yaml"; fi
+step "config.yaml (merge)"
+merge_config_yaml
 
 step "SOUL.md"
 if [ -f "$SOURCE_HOME/SOUL.md" ]; then
@@ -184,15 +333,8 @@ else
   fi
 fi
 
-step ".env"
-DST_ENV="$TARGET/.env"
-if [ ! -f "$ENV_EXAMPLE" ]; then skip "distribution ships no .env.EXAMPLE (no keys required)"
-elif [ ! -f "$DST_ENV" ]; then
-  if [ "$DRY_RUN" = 1 ]; then info "[dry-run] create .env from .env.EXAMPLE"; else cp -f "$ENV_EXAMPLE" "$DST_ENV"; ok "created .env from template — EDIT IT to add your keys"; fi
-else
-  missing="$(comm -23 <(env_keys "$ENV_EXAMPLE" | sort -u) <(env_keys "$DST_ENV" | sort -u) || true)"
-  if [ -n "$missing" ]; then warn "existing .env preserved. Template keys not present:"; echo "$missing" | sed 's/^/    /'; else ok "existing .env preserved; all template keys present"; fi
-fi
+step ".env (merge)"
+merge_env_file
 
 step "Paid Nous Portal base (--portal)"
 if [ "$PORTAL" = 0 ]; then skip "not requested (free chain is the default)"

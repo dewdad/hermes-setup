@@ -265,7 +265,7 @@ chmod +x bootstrap.sh
 ./bootstrap.sh --template general
 ```
 
-Bootstrap default template is `base/general`. It backs up, swaps `config.yaml` with `.bak`, preserves SOUL unless it carries the unconfigured marker, merges skills (never deletes others), and creates `.env` from `.env.EXAMPLE` **only if it does not already exist**.
+Bootstrap default template is `base/general`. It backs up, then **key-merges** `config.yaml` (adds the distribution's new keys, keeps your existing values, prompts on conflicts; an uncustomized config is overwritten wholesale — needs Python+PyYAML, else it overwrites only when provably pristine and otherwise preserves your config), preserves SOUL unless it carries the unconfigured marker, merges skills (never deletes others), and for `.env` creates it from `.env.EXAMPLE` when missing or else appends placeholders for any missing keys (your existing values are never touched or printed).
 
 See `AGENT_SETUP.md` for the full step-by-step runbook (both flows) that a coding agent can follow.
 

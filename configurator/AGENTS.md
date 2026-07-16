@@ -27,6 +27,13 @@ distributions under `dist/<persona>/`. Pure library + CLI; no installer behavior
   - `model.py` — schema types (frozen slotted dataclasses / `Literal` variants).
   - `parse.py` — validate raw YAML → `Template`.
   - `merge.py` — inheritance + deep-merge (`!remove`, include/exclude, base→locale→persona).
+  - `profile_merge.py` — the APPLY-time `config.yaml` merge for the EXTEND path (distinct from
+    `merge.py`'s compile-time child-over-parent): EXISTING-preserving additive merge — adds new
+    keys/sub-keys, keeps existing scalar values on conflict (reported for the installer to prompt),
+    unions known lists (`skills.external_dirs` by string, `fallback_providers`/`auxiliary.vision.
+    fallback_chain` by `(provider,model)`), reconciles `_config_version`, and detects a pristine
+    target by exact normalized-hash equality (provenance / incoming / `dist/general`) — never fuzzy.
+    Pure: no Hermes calls, never reads `.env`; the installer scripts own prompting/`.env`/provenance.
   - `soul.py` — fragment compose + 20000-char cap.
   - `manifest.py` — flat `distribution.yaml` (owns `meta-skills`, never `skills`; owns
     `setup.steps.{sh,ps1}` when `setup_steps[]` present) + `.env.EXAMPLE`.
@@ -60,9 +67,11 @@ distributions under `dist/<persona>/`. Pure library + CLI; no installer behavior
     `portal_auth` base and `["free","pro"]` otherwise (free default, paid Portal via the `--pro` /
     `--portal` apply flag). Pure function; embeds NO repo URL (deterministic across forks).
   - `verify.py` — aggregate quality gates (also secret-scans the repo-root `profiles.json`).
-  - `compile.py` — CLI (`compile`, `verify`, `update-locks`, `ingest`); on every non-dry-run
-    compile writes the repo-root `profiles.json` from the FULL registry (secret-scanned first), so
-    the catalogue never drifts from `dist/` even after a single-template compile.
+  - `compile.py` — CLI (`compile`, `verify`, `update-locks`, `ingest`, `merge-config`); on every
+    non-dry-run compile writes the repo-root `profiles.json` from the FULL registry (secret-scanned
+    first), so the catalogue never drifts from `dist/` even after a single-template compile.
+    `merge-config {plan,apply-decisions}` is the pure `config.yaml` merge the `bootstrap.*` EXTEND
+    flow shells out to (file IO here; the engine lives in `profile_merge.py`).
 
 ## Work Guidance
 

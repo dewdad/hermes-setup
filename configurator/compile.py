@@ -93,6 +93,70 @@ def _cmd_update_locks(args: argparse.Namespace) -> int:
     return update_locks(args.root, targets=args.targets)
 
 
+def _load_yaml_or_empty(path: Path | None) -> dict[str, object]:
+    from configurator.yamlio import load_yaml  # noqa: PLC0415
+
+    return load_yaml(path) if path is not None and path.exists() else {}
+
+
+def _provenance_hash(path: Path | None) -> str | None:
+    """Read ``config.last_written_normalized_sha256`` from the installer's profile-state sidecar."""
+    import json  # noqa: PLC0415
+
+    if path is None or not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    cfg = data.get("config") if isinstance(data, dict) else None
+    stamp = cfg.get("last_written_normalized_sha256") if isinstance(cfg, dict) else None
+    return stamp if isinstance(stamp, str) else None
+
+
+def _cmd_merge_config(args: argparse.Namespace) -> int:
+    """Pure config.yaml merge for the EXTEND apply flow. Reads/writes only the paths passed in."""
+    import json  # noqa: PLC0415
+
+    from configurator.profile_merge import apply_decisions, normalized_hash, plan_merge  # noqa: PLC0415
+    from configurator.yamlio import dump_yaml  # noqa: PLC0415
+
+    existing = _load_yaml_or_empty(args.existing)
+    incoming = _load_yaml_or_empty(args.incoming)
+    if args.action == "plan":
+        plan = plan_merge(
+            existing, incoming,
+            default=_load_yaml_or_empty(args.default) or None,
+            provenance_hash=_provenance_hash(args.provenance),
+        )
+        if args.candidate is not None:
+            write_text(args.candidate, dump_yaml(plan.merged))
+        result: dict[str, object] = {
+            "schema": 1, "status": "ok", "strategy": plan.strategy, "pristine": plan.pristine,
+            "candidate": str(args.candidate) if args.candidate else None,
+            "added": list(plan.added), "list_appended": list(plan.list_appended),
+            "conflicts": [c.as_json() for c in plan.conflicts], "warnings": list(plan.warnings),
+            "normalized_sha256": normalized_hash(plan.merged),
+            "source_config_sha256": normalized_hash(incoming),
+        }
+    else:
+        raw = json.loads(args.decisions.read_text(encoding="utf-8")) if args.decisions else {}
+        dec_raw = raw.get("decisions", []) if isinstance(raw, dict) else []
+        if isinstance(dec_raw, dict):  # PowerShell ConvertTo-Json renders a 1-element array as an object
+            dec_raw = [dec_raw]
+        decisions = {
+            str(d["path"]): str(d["choice"])
+            for d in dec_raw if isinstance(d, dict) and "path" in d and "choice" in d
+        }
+        merged = apply_decisions(existing, incoming, decisions)
+        if args.out is not None:
+            write_text(args.out, dump_yaml(merged))
+        result = {"schema": 1, "status": "ok", "out": str(args.out) if args.out else None,
+                  "normalized_sha256": normalized_hash(merged)}
+    print(dump_json(result), end="")
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="configurator", description=__doc__)
     parser.add_argument("--root", type=Path, default=REPO_ROOT, help="repo root (default: package root)")
@@ -117,6 +181,20 @@ def _build_parser() -> argparse.ArgumentParser:
     locks_p = sub.add_parser("update-locks", help="re-resolve skill sources and rewrite locks/")
     locks_p.add_argument("targets", nargs="*", help="template refs or names (default: all)")
     locks_p.set_defaults(func=_cmd_update_locks)
+
+    mc = sub.add_parser(
+        "merge-config",
+        help="merge a distribution config.yaml into a live profile config (pure; no hermes calls)",
+    )
+    mc.add_argument("action", choices=["plan", "apply-decisions"], help="plan a merge or apply user decisions")
+    mc.add_argument("--existing", type=Path, required=True, help="the live profile config.yaml (may not exist)")
+    mc.add_argument("--incoming", type=Path, required=True, help="the distribution's config.yaml")
+    mc.add_argument("--default", type=Path, default=None, help="the base/general config.yaml (pristine reference)")
+    mc.add_argument("--provenance", type=Path, default=None, help="profile-state.json sidecar (pristine reference)")
+    mc.add_argument("--candidate", type=Path, default=None, help="[plan] write the merged candidate here")
+    mc.add_argument("--decisions", type=Path, default=None, help="[apply-decisions] JSON of per-conflict choices")
+    mc.add_argument("--out", type=Path, default=None, help="[apply-decisions] write the resolved config here")
+    mc.set_defaults(func=_cmd_merge_config)
     return parser
 
 

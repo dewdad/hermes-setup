@@ -50,27 +50,105 @@ param(
 $ErrorActionPreference = 'Stop'
 if (-not $Repo) { $Repo = $env:HERMES_SETUP_REPO }
 
+# Derive a downloadable GitHub archive URL from the given repo URL (default branch via HEAD).
+# Returns $null for non-GitHub hosts, where no generic archive scheme exists. No org is baked in —
+# the URL is computed entirely from the -Repo value the caller supplied.
+function Convert-ToGitHubZipUrl($repoUrl) {
+  $u = ($repoUrl -as [string]).Trim() -replace '\.git$', ''
+  if ($u -match '^git@github\.com:(?<slug>[^/]+/[^/]+)$') { return "https://codeload.github.com/$($Matches.slug)/zip/HEAD" }
+  if ($u -match '^(https?://)?github\.com/(?<slug>[^/]+/[^/]+?)/?$') { return "https://codeload.github.com/$($Matches.slug)/zip/HEAD" }
+  return $null
+}
+
+# A checkout is only reusable if git agrees it has a commit AND the tree actually contains dist/.
+# A half-finished clone leaves a .git but no dist/, so presence of .git alone is not enough.
+function Test-RepoCheckout($git, $path) {
+  if (-not (Test-Path -LiteralPath (Join-Path $path '.git'))) { return $false }
+  & $git -C $path rev-parse HEAD 2>&1 | Out-Null
+  if ($LASTEXITCODE -ne 0) { return $false }
+  return (Test-Path -LiteralPath (Join-Path $path 'dist'))
+}
+
+# Clone with retries + a low-speed abort so a stalled transfer fails fast instead of hanging.
+# Surfaces git's own output on failure (the old '2>&1 | Out-Null' hid the very errors we diagnose).
+function Invoke-RobustClone($git, $url, $dest) {
+  for ($i = 1; $i -le 3; $i++) {
+    if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force -ErrorAction SilentlyContinue }
+    $out = & $git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 clone --depth 1 $url $dest 2>&1
+    if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath (Join-Path $dest 'dist'))) { return $true }
+    Write-Host "  clone attempt $i/3 failed (exit $LASTEXITCODE)."
+    if ($out) { $out | ForEach-Object { Write-Host "    git: $_" } }
+  }
+  return $false
+}
+
+# Last-resort recovery when git transport itself is broken: download the repo as a ZIP and extract.
+# GitHub-only (URL derived from -Repo); returns the extracted repo root, or $null if unavailable.
+function Invoke-ZipFallback($url, $cache) {
+  $zipUrl = Convert-ToGitHubZipUrl $url
+  if (-not $zipUrl) {
+    Write-Host "  no ZIP fallback available for this host (only GitHub URLs are supported)."
+    return $null
+  }
+  $curl = (Get-Command curl.exe -ErrorAction SilentlyContinue).Source
+  if (-not $curl) { Write-Host "  curl.exe not found — cannot run the ZIP fallback."; return $null }
+  $zipPath = "$cache.zip"
+  $extract = "$cache-zip"
+  Write-Host "  git clone failed — trying ZIP fallback: $zipUrl"
+  & $curl -fsSL -o $zipPath $zipUrl
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $zipPath)) { Write-Host "  ZIP download failed."; return $null }
+  if (Test-Path -LiteralPath $extract) { Remove-Item -LiteralPath $extract -Recurse -Force -ErrorAction SilentlyContinue }
+  try { Expand-Archive -LiteralPath $zipPath -DestinationPath $extract -Force } catch { Write-Host "  ZIP extract failed: $($_.Exception.Message)"; return $null }
+  Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+  # A GitHub archive nests everything under a single <repo>-<ref>/ folder.
+  $inner = Get-ChildItem -LiteralPath $extract -Directory -ErrorAction SilentlyContinue |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'dist') } | Select-Object -First 1
+  if (-not $inner) { Write-Host "  ZIP extracted but no dist/ found."; return $null }
+  Write-Host "  recovered via ZIP fallback."
+  return $inner.FullName
+}
+
 function Resolve-RepoRoot {
   $scriptDir = $PSScriptRoot
   if ($scriptDir -and (Test-Path -LiteralPath (Join-Path $scriptDir 'dist'))) { return $scriptDir }
   if (-not $Repo) {
-    Write-Error "No local dist/ found next to this script and no repo URL given. Run this from a clone of hermes-setup, or pass -Repo <git-url> (or set `$env:HERMES_SETUP_REPO)."
+    Write-Error "No local dist/ found next to this script and no repo URL given. Run this from a clone of hermes-setup, or pass -Repo <git-url-or-local-folder> (or set `$env:HERMES_SETUP_REPO)."
+  }
+  # -Repo may be a local checkout (e.g. a manually extracted ZIP) — use it directly, no clone.
+  if ((Test-Path -LiteralPath $Repo -PathType Container) -and (Test-Path -LiteralPath (Join-Path $Repo 'dist'))) {
+    return (Resolve-Path -LiteralPath $Repo).Path
   }
   $git = (Get-Command git -ErrorAction SilentlyContinue).Source
   if (-not $git) { Write-Error "git not found — needed to clone $Repo" }
+  # Never let a git credential helper pop an interactive prompt (a common silent-hang on Windows).
+  $env:GIT_TERMINAL_PROMPT = '0'
   # Key the cache dir by the repo URL so a later -Repo <other-url> never reuses the wrong clone.
   $cacheBase = if ($env:HERMES_SETUP_CACHE) { $env:HERMES_SETUP_CACHE } else { Join-Path $env:LOCALAPPDATA 'hermes-setup-cache' }
   $md5 = [System.Security.Cryptography.MD5]::Create()
   $urlKey = ([BitConverter]::ToString($md5.ComputeHash([Text.Encoding]::UTF8.GetBytes($Repo))) -replace '-', '').Substring(0, 12)
   $cache = Join-Path $cacheBase $urlKey
+  # Reuse a cached clone ONLY if it is valid; a corrupt/half-clone is nuked and refetched.
   if (Test-Path -LiteralPath (Join-Path $cache '.git')) {
-    & $git -C $cache pull --ff-only 2>&1 | Out-Null   # tolerate offline / non-ff
-  } else {
-    New-Item -ItemType Directory -Force -Path $cacheBase | Out-Null
-    & $git clone --depth 1 $Repo $cache 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { Write-Error "clone failed: $Repo"; exit 1 }
+    if (Test-RepoCheckout $git $cache) {
+      & $git -C $cache pull --ff-only 2>&1 | Out-Null   # refresh; tolerate offline / non-ff
+      return $cache
+    }
+    Write-Host "Cached checkout at $cache is incomplete or corrupt — removing and re-fetching."
+    Remove-Item -LiteralPath $cache -Recurse -Force -ErrorAction SilentlyContinue
   }
-  return $cache
+  New-Item -ItemType Directory -Force -Path $cacheBase | Out-Null
+  if (Invoke-RobustClone $git $Repo $cache) { return $cache }
+  $zipRoot = Invoke-ZipFallback $Repo $cache
+  if ($zipRoot) { return $zipRoot }
+  Write-Host ''
+  Write-Host "Could not obtain the repo from: $Repo"
+  Write-Host 'Remediation:'
+  Write-Host "  1. Download the repo ZIP in a browser (for a GitHub repo: <repo-url>/archive/HEAD.zip),"
+  Write-Host '     extract it, then rerun pointing -Repo at the extracted folder:'
+  Write-Host "         .\install.ps1 $(if ($Persona) { $Persona } else { '<persona>' }) -Repo '<extracted-folder>'"
+  Write-Host '  2. Or clone it yourself and run .\install.ps1 from inside that checkout.'
+  Write-Error "clone failed: $Repo"
+  exit 1
 }
 
 function Get-Profiles($repoRoot) {

@@ -64,6 +64,35 @@ A git or network failure here must not block either runbook.
 
 ---
 
+## Getting the repo onto the machine (shell choice + clone-failure fallback)
+
+Both runbooks assume a local checkout with `dist/<persona>/`. The `install.ps1` / `install.sh` entry points create that checkout for you when run standalone (`-Repo` / `--repo`), and they are resilient: each **validates any cached clone** (a half-finished clone is nuked and refetched), **retries** the clone with a low-speed abort, and, if git transport itself is broken, **falls back to downloading the repo archive** (GitHub ZIP on Windows, tarball on POSIX) — the archive URL is derived from the `-Repo` / `--repo` value you pass, never hardcoded.
+
+**Pick the entry point that matches your shell:**
+
+- **Windows PowerShell** — `install.ps1` and the `irm <RAW_REPO_URL>/install.ps1 | iex` one-liner require PowerShell (`powershell.exe` / `pwsh`).
+- **Git Bash (Hermes' in-app terminal on Windows), WSL, GitHub Codespaces, macOS/Linux** — use `install.sh`. `powershell.exe` is often **not** on `PATH` inside these shells, so do **not** reach for the `.ps1` one-liner there:
+
+  ```bash
+  curl -fsSL <RAW_REPO_URL>/install.sh | bash -s -- <persona> --repo <REPO_GIT_URL> --yes
+  ```
+
+**Manual archive fallback (if every automatic path fails).** Download the repo archive in a browser (for a GitHub repo, `<repo-url>/archive/HEAD.zip` or `.../HEAD.tar.gz`), extract it, then point the installer at the extracted folder with `-Repo` / `--repo` (both installers accept a **local folder** there, not just a git URL). Use forward slashes so the path works from Git Bash too:
+
+```powershell
+# Windows PowerShell — extracted to C:\Users\me\Downloads\hermes-setup-main
+.\install.ps1 il-citizen -Repo 'C:/Users/me/Downloads/hermes-setup-main' -Yes
+```
+
+```bash
+# Git Bash / WSL / macOS / Linux — extracted folder, forward-slash path
+./install.sh il-citizen --repo '/c/Users/me/Downloads/hermes-setup-main' --yes
+```
+
+The installer then runs `hermes profile install <extracted-folder>/dist/<persona>` locally — no network needed once the archive is extracted.
+
+---
+
 ## Runbook A — Install as a named profile
 
 Use this when you want the persona isolated from the default profile. Every named profile has its own `config.yaml`, `SOUL.md`, `skills/`, and `.env` under `HERMES_HOME/profiles/<name>/`.

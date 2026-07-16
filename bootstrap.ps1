@@ -63,6 +63,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Never let a git credential helper pop an interactive prompt during the open-skills / multi-gws
+# clones below (a common silent-hang on Windows). Only affects git subprocesses; no restore needed.
+$env:GIT_TERMINAL_PROMPT = '0'
 $RepoRoot     = $PSScriptRoot
 $TemplateName = Split-Path -Leaf $Template
 $SourceHome   = Join-Path $RepoRoot "dist\$TemplateName"

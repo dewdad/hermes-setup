@@ -15,6 +15,10 @@
 # for the one-time host setup (Hermes, Nous Portal, Node.js + git, Beeper).
 set -euo pipefail
 
+# Never let a git credential helper pop an interactive prompt during the open-skills / multi-gws
+# clones below (a common silent-hang). Only affects git subprocesses.
+export GIT_TERMINAL_PROMPT=0
+
 TEMPLATE="base/general"
 HERMES_HOME_ARG=""
 DRY_RUN=0; FORCE=0; SKIP_BACKUP=0; SKIP_SKILLS=0; SKIP_OPEN_SKILLS=0; SKIP_GWS=0; SKIP_SKILLS_INSTALL=0; SKIP_SETUP_STEPS=0; ASSUME_YES=0; PORTAL=0

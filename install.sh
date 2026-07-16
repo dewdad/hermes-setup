@@ -234,6 +234,13 @@ install_profile() {
     bash "$bootstrap" "${bs_args[@]}"
     exit $?
   fi
+  # Surface the auto-decision: a non-interactive run with no explicit choice silently lands a NEW
+  # isolated profile. Make that visible (e.g. in an agent transcript) instead of silent.
+  if [ -z "$MODE" ] && { [ "$ASSUME_YES" = 1 ] || [ ! -t 0 ]; }; then
+    echo "Non-interactive run: applying '$persona' as a NEW isolated profile '$profile' (current profile untouched)."
+    echo "  To choose, re-run with --new (isolated) or --extend (merge into your current profile),"
+    echo "  or run './install.sh $persona' in an interactive terminal to be prompted."
+  fi
   # Preflight: fail clearly on a name collision instead of hanging on a Hermes prompt.
   if hermes profile list 2>/dev/null | grep -Eq "(^|[[:space:]])${profile}([[:space:]]|\$)"; then
     echo "A Hermes profile named '$profile' already exists." >&2

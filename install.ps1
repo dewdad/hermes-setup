@@ -329,6 +329,13 @@ if ($applyMode -eq 'extend') {
   else                { & $bootstrap -Template $Persona }
   exit $LASTEXITCODE
 }
+# Surface the auto-decision: a non-interactive run with no explicit choice silently lands a NEW
+# isolated profile. Make that visible (e.g. in an agent transcript) instead of silent.
+if ((-not $New) -and (-not $Extend) -and (-not $Interactive)) {
+  Write-Host "Non-interactive run: applying '$Persona' as a NEW isolated profile '$profileName' (current profile untouched)." -ForegroundColor Yellow
+  Write-Host "  To choose, re-run with -New (isolated) or -Extend (merge into your current profile),"
+  Write-Host "  or run '.\install.ps1 $Persona' in an interactive console to be prompted."
+}
 
 # Preflight: fail clearly on a name collision instead of hanging on a Hermes prompt.
 $existing = ''

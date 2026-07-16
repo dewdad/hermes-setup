@@ -28,6 +28,23 @@ class ReadmeContent(unittest.TestCase):
         )
         self.assertIn("hermes skills install skills-sh/x/y/z", text)
 
+    def test_installer_preferred_with_finish_setup_caveat(self) -> None:
+        # A bare `hermes profile install` does not seed the ~/.hermes-setup/meta-skills fallback, so
+        # the README must point at the bundled installer for full /finish-setup registration.
+        text = build_readme(_tpl())  # type: ignore[arg-type]
+        self.assertIn("install.sh", text)
+        self.assertIn("install.ps1", text)
+        low = text.lower()
+        self.assertIn("hermes-setup/meta-skills", low)
+
+    def test_per_profile_sessions_note(self) -> None:
+        # #5: README must explain sessions/auth are per-profile and how to switch (avoids the
+        # "my history was wiped" perception after a new-profile install).
+        text = build_readme(_tpl())  # type: ignore[arg-type]
+        low = text.lower()
+        self.assertIn("per-profile", low)
+        self.assertIn("hermes profile use", text)
+
     def test_deterministic(self) -> None:
         self.assertEqual(
             build_readme(_tpl()),  # type: ignore[arg-type]

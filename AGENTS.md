@@ -103,7 +103,26 @@ env-var checks, secret hygiene, and skill security scanning — we never reinven
     (it is denylist-driven; `distribution_owned` is advisory only in Hermes v0.18.x), so shipping it
     under `skills/` would **wipe the user's installed skills on `hermes profile update`** (proven).
     `config.yaml` references `meta-skills` via a profile-relative `skills.external_dirs` entry so
-    Hermes discovers it and registers `/finish-setup`. `dist/` still ships no `skills/`.
+    Hermes discovers it and registers `/finish-setup`. `dist/` still ships no `skills/`. **Because
+    Hermes v0.18.x resolves a *relative* external dir against `HERMES_HOME` (the profile dir only for
+    `hermes -p <name>`; the root/default home on Desktop, the gateway, and subprocesses — verified in
+    `agent/skill_utils.py::get_external_skills_dirs`), the relative `meta-skills` entry alone leaves
+    `/finish-setup` invisible on those surfaces.** So `config.yaml` also emits a SECOND, stable,
+    `~`-anchored fallback entry — `~/.hermes-setup/meta-skills` (kept AFTER `meta-skills`, so the
+    profile-local copy stays authoritative) — which Hermes `expanduser`s to an absolute path that
+    resolves regardless of `HERMES_HOME`. The apply flow (`install.*`, `bootstrap.*`) copies the
+    generated `finish-setup` skill into that shared dir on apply; the shared copy is
+    "last-installed-persona wins" and is not auto-refreshed by `hermes profile update` (re-run the
+    installer to refresh it). `bootstrap.*` additionally copies `meta-skills/` into the target home so
+    the profile-relative entry resolves for the default profile too. **Last-wins is a bounded,
+    deliberate tradeoff:** the compile-time `config.yaml` entry cannot embed the (unknown-at-compile)
+    profile name, so a single shared path is the only thing an emitted config can reference; the
+    profile-local `meta-skills` entry stays FIRST/authoritative whenever `HERMES_HOME` resolves to the
+    profile (`hermes -p <name>`), so the shared copy only serves the root/gateway surface — where a
+    single "current" onboarding is the expected behavior anyway. Because a bare `hermes profile
+    install` / Desktop-import does NOT run our scripts (so it never seeds the shared dir), the
+    generated `profiles.json` `local_*`/`standalone_*` commands and the README route installs through
+    `install.*`/`bootstrap.*`, and `/finish-setup` is always reachable via `hermes -p <name>`.
 - **`/finish-setup` completion command** — Hermes registers every discovered skill as a
   `/slash-command`, so the generated meta-skill is invoked as `/finish-setup`. It walks the user
   through optional provider keys, (re)installs the referenced skills grouped by Tier, offers Tier-1
@@ -122,6 +141,19 @@ env-var checks, secret hygiene, and skill security scanning — we never reinven
   (`bootstrap.ps1`/`bootstrap.sh`) auto-runs `hermes skills install <id>` / `hermes skills tap add
   <tap>` for each, gated by the user's confirmation and tolerant of individual failures, so applying
   a persona lands its skills installed **and** Hermes-security-scanned.
+- **Apply-flow install choices & safety (binding)** — the two apply paths are a deliberate choice the
+  installer surfaces, never an accident of which script ran. `install.*` (named-profile) opens with an
+  interactive **new-isolated vs. extend-current** prompt: option 1 (default, and the only path under
+  `--yes`/`-Yes` or a non-tty) installs a NEW isolated profile; option 2 hands off to `bootstrap.*`
+  (extend the current/default profile). `profiles.json`'s `agent_instructions` teaches an agent to ask
+  the same question. Because Hermes sessions/auth/memory are **per-profile**, a named install leaves
+  the active profile unchanged (no data is ever lost — `hermes profile install` excludes
+  `sessions`/`state.db`/`memories`/`auth.json`): so `install.*` prints a per-profile-sessions note and
+  offers `hermes profile use <name>` (opt-in; `--yes` prints the command, never auto-switches), and the
+  generated `/finish-setup` + per-dist README carry the same note. `install.*`/`bootstrap.*` also print
+  an **auth-integrity warning** if Hermes rotates a corrupt credential store to `auth.json.corrupt`
+  during the run, and a named `--pro`/`-Pro` install runs `hermes -p <name> auth add nous` (profile-
+  scoped) so it never mutates the shared ROOT `auth.json`.
 - **Zero paid Tool Gateway by default (binding)** — this rule binds `base/general` and the free path;
   the paid `base/general-pro` rail is the **one sanctioned carve-out** (it deliberately sets
   `use_gateway: true` for `web`/`browser`/`image_gen`/`tts` and routes them through the Portal —
@@ -170,7 +202,13 @@ env-var checks, secret hygiene, and skill security scanning — we never reinven
   one-time host setup in `PREREQUISITES.md` (Hermes, free Nous Portal subscription + login, Node.js
   + git), each `dist/<persona>/` is a ready standalone distribution installable in one step from a
   local folder, the user's published git repo, or Hermes Desktop's in-UI import:
-  `hermes profile install ./dist/general --name general` (or `<REPO_URL>`). Tier-0's browser
+  `hermes profile install ./dist/general --name general` (or `<REPO_URL>`). **Caveat (binding):** a
+  bare `hermes profile install` / Desktop import does NOT run our scripts, so it never seeds the
+  shared `~/.hermes-setup/meta-skills` fallback — `/finish-setup` is then guaranteed only when the
+  profile is opened with `hermes -p <name>` (where the profile-relative `meta-skills` entry resolves),
+  and may be absent on the default/Desktop surface until the bundled `install.*` is run once. When a
+  terminal is available, prefer `./install.sh <name>` / `.\install.ps1 <name>` (they register
+  `/finish-setup` on every surface); the README states this nuance. Tier-0's browser
   automation + web research work immediately keyless; free chat runs on the free Nous Portal
   baseline (or any one free-tier key), which `/finish-setup` walks the user through (along with
   Tier-1). Publishing to a concrete repo is a **user/manual step** — no org is hard-coded and no
@@ -179,7 +217,8 @@ env-var checks, secret hygiene, and skill security scanning — we never reinven
   this repo (even on the weak `stepfun/step-3.7-flash:free` fallback) can list the profiles and
   install a chosen one in **one fetch + one command**, the compiler emits a generated repo-root
   `profiles.json` catalogue (every installable profile's name/description/version, its `dist/<name>`
-  path, a ready-to-run `install_command`, and an `agent_instructions` recipe) and the repo ships two
+  path, ready-to-run `local_posix_command` / `local_windows_command` / `standalone_*_command` fields
+  that all route through the bundled installer scripts, and an `agent_instructions` recipe) and the repo ships two
   static, persona-agnostic installers `install.sh` / `install.ps1` (`--list` / `-List`, positional
   `<name>`, `--name`/`--yes`/`--repo`). Because Hermes' `profile install` **cannot** target a repo
   *subdirectory* (it clones the URL root and requires `distribution.yaml` there), the installers do
@@ -192,7 +231,14 @@ env-var checks, secret hygiene, and skill security scanning — we never reinven
   a baked-in org; `--repo` also accepts a **local folder** (a manually extracted archive) so the
   printed remediation actually works offline. `profiles.json` is **generated infrastructure**
   (regenerated by `compile`, secret-scanned, deterministic) and, like the installers, **embeds no
-  repo URL / org** — the agent uses the link it was given.
+  repo URL / org** — the agent uses the link it was given. **Never a bare repo-root install (binding):**
+  the installable distributions live under `dist/<name>/`, so the repo ROOT has no `distribution.yaml`
+  and `hermes profile install <repo-root-url>` FAILS. An agent must NOT fall back to downloading and
+  extracting the repo ZIP itself — that bakes a transient `%TEMP%`/`/tmp` `source:` into the installed
+  manifest and breaks `hermes profile update` (which re-pulls from `source:`). `profiles.json`'s
+  `agent_instructions` + `install.note` and the root README all steer the agent to the sanctioned
+  clone-to-stable-cache installers instead, and the installers themselves only ever record a stable
+  cache-dir `source:` — never a temp path.
 - **Determinism & portability** — emit with stable key ordering so `dist/` diffs cleanly in git.
   Windows-first correctness (paths, UTF-8 with Hebrew content) since this machine is the primary test bed.
 - **Config schema** — target `_config_version: 33` (Hermes v0.18.x / 2026.7.x). Custom providers use

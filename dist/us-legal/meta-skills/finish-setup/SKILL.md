@@ -168,6 +168,10 @@ Curated catalogues:
 
 ## Pitfalls
 
+- Sessions, auth, and memory are **per-profile**. Installing this as a new named profile does
+  NOT delete anything — your previous chat history stays in its own profile. If Hermes opens
+  a different (near-empty) profile afterward, nothing was wiped: make this one your sticky
+  default with `hermes profile use <name>`, or open it directly with `hermes -p <name>`.
 - Tier-1 extras (Google apps, messaging) need their own setup and never block a working
   agent — skip them freely.
 - Community SearXNG instances can rotate/expire; the DuckDuckGo fallback keeps web search

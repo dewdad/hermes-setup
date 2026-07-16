@@ -167,6 +167,20 @@ class MetaSkill(unittest.TestCase):
             self.assertEqual(cfg["skills"]["external_dirs"][0], "meta-skills")
             self.assertIn("~/open-skills/skills", cfg["skills"]["external_dirs"])
 
+    def test_stable_home_anchored_fallback_external_dir(self) -> None:
+        # #1: a ~-anchored fallback dir resolves independent of HERMES_HOME (Desktop/gateway/root),
+        # so /finish-setup stays discoverable when the relative meta-skills entry can't resolve.
+        tpl = _base(skills={"bundled": "none", "external_dirs": ["~/open-skills/skills"]})
+        with TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            emit_distribution(tpl, out)  # type: ignore[arg-type]
+            cfg = yaml.safe_load((out / "config.yaml").read_text(encoding="utf-8"))
+            dirs = cfg["skills"]["external_dirs"]
+            self.assertEqual(dirs[0], "meta-skills")  # profile-relative stays authoritative + first
+            self.assertIn("~/.hermes-setup/meta-skills", dirs)
+            self.assertLess(dirs.index("meta-skills"), dirs.index("~/.hermes-setup/meta-skills"))
+            self.assertIn("~/open-skills/skills", dirs)
+
     def test_meta_skills_owned_but_skills_not(self) -> None:
         with TemporaryDirectory() as tmp:
             out = Path(tmp)
@@ -178,6 +192,22 @@ class MetaSkill(unittest.TestCase):
     def test_secret_in_env_description_fails_meta_skill_scan(self) -> None:
         # The meta-skill renders env descriptions; a planted key-shaped literal there must fail emit.
         tpl = _base(env=[{"name": "X_KEY", "description": "use sk-ant-abc123def456ghi789jkl012mno345"}])
+        with TemporaryDirectory() as tmp, self.assertRaises(SecretLeakError):
+            emit_distribution(tpl, Path(tmp))  # type: ignore[arg-type]
+
+
+class ManifestSecretScan(unittest.TestCase):
+    def test_secret_in_post_install_note_fails_emit(self) -> None:
+        # skills.install.json is a generated manifest — a key-shaped literal in it must fail the build.
+        tpl = _base(post_install=[
+            {"id": "official/x/y", "note": "use sk-ant-abc123def456ghi789jkl012mno345"},
+        ])
+        with TemporaryDirectory() as tmp, self.assertRaises(SecretLeakError):
+            emit_distribution(tpl, Path(tmp))  # type: ignore[arg-type]
+
+    def test_secret_in_bundle_skill_fails_emit(self) -> None:
+        # skills.sh.json (Skills-Hub labels) is generated from bundles/includes — scan it too.
+        tpl = _base(bundles=[{"name": "core", "skills": ["AKIAIOSFODNN7EXAMPLE1234"]}])
         with TemporaryDirectory() as tmp, self.assertRaises(SecretLeakError):
             emit_distribution(tpl, Path(tmp))  # type: ignore[arg-type]
 

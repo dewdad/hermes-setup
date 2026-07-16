@@ -34,10 +34,12 @@ Every persona is a **decorator on the same personal assistant**: it keeps the fr
 ### The short version
 
 1. Install Hermes and complete the free `hermes setup --portal` login (see prerequisites below).
-2. `hermes profile install ./dist/general --name general` (or any name from the table).
+2. From a clone of this repo, run the bundled installer: `./install.sh general` (POSIX) or `.\install.ps1 general` (Windows). It asks new-isolated vs. extend-current, installs, and registers `/finish-setup` on every surface. (A bare `hermes profile install ./dist/general --name general` also works, but see the note below.)
 3. Open it (`hermes -p general`) and run `/finish-setup`.
 
 That's a working, free agent. The detailed walkthrough follows.
+
+> **`/finish-setup` discovery.** The bundled `install.sh`/`install.ps1` scripts register `/finish-setup` on **every** surface — including the default profile, the gateway, and Hermes Desktop — because they also seed a stable `~/.hermes-setup/meta-skills` copy (Hermes resolves the profile-relative `meta-skills` entry only when you open the profile with `hermes -p <name>`). If you install with a bare `hermes profile install` instead, `/finish-setup` still appears when you open the profile via `hermes -p <name>`, but may be absent on the default/Desktop surface until you run the installer once.
 
 > **Do the one-time prerequisites first.** Before installing a persona, work through `PREREQUISITES.md` — install Hermes, complete the **free Nous Portal subscription** + `hermes setup --portal` login (the baseline that powers free chat), and install **Node.js + git** (the apply flow builds the Google Workspace CLI). Beeper Desktop and a Google account are optional Tier-1 extras. Everything on the list is free to run.
 
@@ -49,6 +51,8 @@ That's a working, free agent. The detailed walkthrough follows.
    hermes profile install <REPO_URL> --name general      # once someone publishes dist/general
    hermes profile install ./dist/general --name general  # or straight from a local folder
    ```
+
+   > If you have a terminal, prefer the bundled `./install.sh general` / `.\install.ps1 general` — it registers `/finish-setup` on every surface (see the discovery note above). With a bare `hermes profile install`, open the profile via `hermes -p general` and `/finish-setup` will be there.
 
 3. **Free chat is already on via the Nous Portal baseline.** Chat works out of the box once you have completed the one-time `hermes setup --portal` login from the prerequisites — that free Portal sign-in **is** the required free baseline. Adding **any one** free-tier provider key (`OPENCODE_ZEN_API_KEY`, `ZENMUX_API_KEY`, `NVIDIA_API_KEY`, or `GOOGLE_API_KEY`) is an optional upgrade that unlocks higher-quality free models earlier in the chain. With no Portal login **and**no key, the chain returns HTTP 403. Browser automation and web research/scraping (SearXNG + DuckDuckGo) are **genuinely keyless** and install on apply, so those work regardless.
 
@@ -86,7 +90,7 @@ Everything below is the **contributor** workflow for authoring and compiling per
 
 Hand an agent — even a small model like the free `stepfun/step-3.7-flash:free` — a link to this repo and ask it to set you up, and the reliable flow is **one fetch + one command**: no repo-subdirectory install (Hermes can't do that), no multi-step reasoning.
 
-1. **Fetch the catalogue.** `profiles.json` at the repo root is a generated, machine-readable index of every installable profile — `name`, `kind`, `description`, `version`, the `dist/<name>` path, and three ready-to-run commands (`local_install_command`, `standalone_posix_command`, `standalone_windows_command`) — plus an `agent_instructions` string the model follows verbatim. One raw-URL fetch gives the agent the whole list:
+1. **Fetch the catalogue.** `profiles.json` at the repo root is a generated, machine-readable index of every installable profile — `name`, `kind`, `description`, `version`, the `dist/<name>` path, and ready-to-run commands (`local_posix_command`, `local_windows_command`, `standalone_posix_command`, `standalone_windows_command` — all routed through the bundled installer scripts) — plus an `agent_instructions` string the model follows verbatim. One raw-URL fetch gives the agent the whole list:
 
    ```
    <RAW_REPO_URL>/profiles.json    # e.g. https://raw.githubusercontent.com/<owner>/hermes-setup/main/profiles.json
@@ -94,9 +98,9 @@ Hand an agent — even a small model like the free `stepfun/step-3.7-flash:free`
 
 2. **List and pick.** The agent shows the `profiles[]` entries and asks which one you want.
 
-3. **Install the choice.** `hermes profile install` **cannot** target a repo *subdirectory* (it clones the URL root and needs `distribution.yaml` there), so installation always runs from a **local clone**. Two cases:
+3. **Install the choice.** `hermes profile install` **cannot** target a repo *subdirectory* (it clones the URL root and needs `distribution.yaml` there) — and this repo's installable profiles live under `dist/<name>/`, so the repo **root has no `distribution.yaml`** and a bare `hermes profile install <this-repo-root-url>` **fails**. Do **not** work around it by downloading/extracting the repo ZIP yourself: that records a transient `%TEMP%`/`/tmp` path as the profile's `source:` and breaks `hermes profile update`. Installation always runs from a **local clone** via the bundled installers (which clone to a *stable* cache and record a stable `source:`). The installers also **ask whether to create a new isolated profile (default) or extend your current/default profile** (option 2 hands off to `bootstrap`); pass `--yes`/`-Yes` to skip the prompt and keep the isolated-profile default. Two cases:
 
-   - **Already inside a clone** → run the profile's `local_install_command`, i.e. the bundled installer:
+   - **Already inside a clone** → run the profile's `local_posix_command` / `local_windows_command`, i.e. the bundled installer:
 
      ```bash
      ./install.sh <name> --yes          # POSIX;  --list to list; --name / --repo also supported
@@ -230,19 +234,21 @@ Compile is deterministic — repeated runs produce identical bytes, so `dist/` d
 
 You have two options.
 
-**(a) Install as a named profile (recommended — isolated).**
+**(a) Install as a named profile (recommended — isolated).** Prefer the bundled installer — it wraps `hermes profile install` and also registers `/finish-setup` on every surface (it seeds a stable `~/.hermes-setup/meta-skills` copy), offers new-isolated-vs-extend, and prints the per-profile-sessions note:
 
 ```powershell
-hermes profile install .\dist\general --name my-general --yes
+.\install.ps1 general -Name my-general -Yes
 hermes -p my-general config check
 hermes -p my-general
 ```
 
 ```bash
-hermes profile install ./dist/general --name my-general --yes
+./install.sh general --name my-general --yes
 hermes -p my-general config check
 hermes -p my-general
 ```
+
+A bare `hermes profile install .\dist\general --name my-general --yes` (POSIX: `./dist/general`) also works, but it does **not** seed the `~/.hermes-setup/meta-skills` fallback — so `/finish-setup` is then guaranteed only when you open the profile with `hermes -p my-general`, and may be absent on the default/Desktop surface until you run the installer once.
 
 Then fill in the keys Hermes prompts for (all provider keys are optional — any single key yields a working agent). Hermes writes the profile's real `.env` under its own `HERMES_HOME` — the repo never sees your secrets.
 

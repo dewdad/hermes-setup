@@ -40,16 +40,23 @@ distributions under `dist/<persona>/`. Pure library + CLI; no installer behavior
     (local-tool provisioning, e.g. RTK). Pure functions; POSIX/PowerShell single-quote escaping;
     each step is idempotent (check-gated) + failure-tolerant. Emitted text is secret-scanned.
   - `emit.py` — orchestrate emission of one `dist/<name>/`; writes the `finish-setup` meta-skill to
-    `meta-skills/finish-setup/SKILL.md` (secret-scanned first) and prepends the profile-relative
-    `meta-skills` dir to `config.yaml`'s `skills.external_dirs` so Hermes registers `/finish-setup`;
-    writes `setup.steps.{sh,ps1}` (secret-scanned) iff the template declares `setup_steps[]`.
+    `meta-skills/finish-setup/SKILL.md` (secret-scanned first) and prepends TWO `skills.external_dirs`
+    entries to `config.yaml` so Hermes registers `/finish-setup` on every surface: the profile-relative
+    `meta-skills` dir FIRST (authoritative under `hermes -p <name>`), then the stable `~`-anchored
+    fallback `~/.hermes-setup/meta-skills` (resolves regardless of `HERMES_HOME`; the apply flow copies
+    the skill there). Also secret-scans the generated `skills.sh.json` / `skills.install.json` before
+    writing them, and writes `setup.steps.{sh,ps1}` (secret-scanned) iff the template declares
+    `setup_steps[]`.
   - `secretscan.py` — secret-literal gate (fails build; also scans the generated meta-skill text).
   - `loader.py` — discover templates + resolve `extends` chain.
   - `sources.py` + `fetch.py` + `locks.py` — vendoring + lockfile IO.
   - `ingest.py` — drift detection from live `config.yaml`.
   - `catalog.py` — build the repo-root `profiles.json` catalogue: every installable profile's
     name / description / version / `apply_modes` / `dist/<name>` path + ready-to-run
-    `install_command`, plus an `agent_instructions` recipe. `apply_modes` is `["pro"]` for a
+    `local_posix_command` / `local_windows_command` / `standalone_*_command` (all routed through the
+    bundled `install.sh` / `install.ps1` — never a bare `hermes profile install`, so the
+    `~/.hermes-setup/meta-skills` fallback + new-vs-extend choice are not bypassed), plus an
+    `agent_instructions` recipe. `apply_modes` is `["pro"]` for a
     `portal_auth` base and `["free","pro"]` otherwise (free default, paid Portal via the `--pro` /
     `--portal` apply flag). Pure function; embeds NO repo URL (deterministic across forks).
   - `verify.py` — aggregate quality gates (also secret-scans the repo-root `profiles.json`).

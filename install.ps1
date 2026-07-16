@@ -202,9 +202,60 @@ function Invoke-PortalSplice($repoRoot, $hermes, $profileName) {
     if ($LASTEXITCODE -ne 0) { Write-Host "  warning: 'hermes -p $profileName config set $key' failed — set it manually." }
   }
   Write-Host 'Logging in to Nous Portal (OAuth) ...'
-  & $hermes auth add nous
-  if ($LASTEXITCODE -ne 0) { Write-Host "  Portal login not completed. Run 'hermes auth add nous' when a browser is available." }
+  # Target the named profile explicitly (-p) so the OAuth credential is written under the profile's
+  # own home, never the shared ROOT auth.json (issue #4 — a named install must not mutate root auth).
+  & $hermes -p $profileName auth add nous
+  if ($LASTEXITCODE -ne 0) { Write-Host "  Portal login not completed. Run 'hermes -p $profileName auth add nous' when a browser is available." }
   Write-Host "Paid Portal base applied. Verify with:  hermes -p $profileName portal info"
+}
+
+# Resolve the ROOT Hermes home (where the shared auth.json lives — NOT a profile dir). Used only for
+# the auth-integrity warning below; auth is root-scoped, so a named install still shares it.
+function Get-HermesHomeRoot {
+  if ($env:HERMES_HOME) { return $env:HERMES_HOME }
+  $localApp = Join-Path $env:LOCALAPPDATA 'hermes'
+  if (Test-Path -LiteralPath $localApp) { return $localApp }
+  $dotHermes = Join-Path $env:USERPROFILE '.hermes'
+  if (Test-Path -LiteralPath $dotHermes) { return $dotHermes }
+  return $localApp
+}
+
+# Snapshot the auth.json.corrupt marker's last-write time (or $null) so we can tell a rotation that
+# happened DURING this install session from a pre-existing one (issue #4).
+function Get-AuthCorruptStamp($homeRoot) {
+  $p = Join-Path $homeRoot 'auth.json.corrupt'
+  if (Test-Path -LiteralPath $p) { return (Get-Item -LiteralPath $p).LastWriteTimeUtc }
+  return $null
+}
+
+# Surface a credential-store rotation that occurred during this session (issue #4). No data loss —
+# auth is shared across profiles and sessions are untouched; the user may just need to re-auth.
+function Show-AuthRotationWarning($homeRoot, $before) {
+  $p = Join-Path $homeRoot 'auth.json.corrupt'
+  if (-not (Test-Path -LiteralPath $p)) { return }
+  $now = (Get-Item -LiteralPath $p).LastWriteTimeUtc
+  if ($before -and $now -le $before) { return }   # pre-existing — not caused by this session
+  Write-Host ''
+  Write-Warning "Hermes rotated a corrupt credential store to auth.json.corrupt during this session."
+  Write-Host "  Location: $p"
+  Write-Host "  Auth is shared across profiles, so root credentials may need re-adding. NO sessions were lost."
+  Write-Host "  Restore with 'hermes auth' (or 'hermes setup --portal' for Portal), then 'hermes auth' to verify."
+}
+
+# Copy the generated finish-setup meta-skill into the stable ~-anchored fallback external dir so
+# /finish-setup stays discoverable even when HERMES_HOME != the profile dir (issue #1). Matches the
+# ~/.hermes-setup/meta-skills entry the compiler emits into config.yaml's skills.external_dirs.
+function Copy-MetaSkillFallback($src) {
+  $srcSkill = Join-Path $src 'meta-skills\finish-setup'
+  if (-not (Test-Path -LiteralPath $srcSkill)) { return }
+  $destParent = Join-Path $env:USERPROFILE '.hermes-setup\meta-skills'
+  $destSkill = Join-Path $destParent 'finish-setup'
+  try {
+    New-Item -ItemType Directory -Force -Path $destParent | Out-Null
+    if (Test-Path -LiteralPath $destSkill) { Remove-Item -LiteralPath $destSkill -Recurse -Force -ErrorAction SilentlyContinue }
+    Copy-Item -LiteralPath $srcSkill -Destination $destParent -Recurse -Force
+    Write-Host "  + /finish-setup also registered via ~/.hermes-setup/meta-skills (discoverable on Desktop / default profile)"
+  } catch { Write-Host "  ! could not populate the ~/.hermes-setup/meta-skills fallback (tolerated): $($_.Exception.Message)" }
 }
 
 $RepoRoot = Resolve-RepoRoot
@@ -239,6 +290,31 @@ if (-not $hermes) { Write-Error 'hermes CLI not found on PATH. Install Hermes fi
 
 $profileName = if ($Name) { $Name } else { $Persona }
 
+# Prompt only when we truly have an interactive console: NOT -Yes AND stdin is a real console (not
+# redirected/piped). A redirected/absent stdin (agent runs, CI, `... | pwsh`) must behave like -Yes
+# so Read-Host never hangs or errors — this mirrors install.sh's `[ -t 0 ]` guard.
+$Interactive = (-not $Yes) -and (-not [System.Console]::IsInputRedirected)
+
+# Choose how to apply: a NEW isolated profile (default) or EXTEND the current/default profile
+# (issue #2). Interactive only — non-interactive / -Yes keeps the isolated-profile default.
+if ($Interactive) {
+  Write-Host ''
+  Write-Host "How do you want to apply '$Persona'?"
+  Write-Host "  [1] New isolated profile '$profileName' (recommended) — its own sessions + auth; your current profile stays untouched."
+  Write-Host "  [2] Extend your CURRENT / default profile — inherit its existing sessions, auth, and skills."
+  Write-Host "      (A new isolated profile starts with empty history; your existing history stays in its own profile, reachable via 'hermes -p <old>'.)"
+  $mode = (Read-Host "Choose [1/2] (default: 1)").Trim()
+  if ($mode -eq '2') {
+    $bootstrap = Join-Path $RepoRoot 'bootstrap.ps1'
+    if (-not (Test-Path -LiteralPath $bootstrap)) { Write-Error "bootstrap.ps1 not found at $bootstrap" }
+    Write-Host "Extending the current/default profile via bootstrap ..."
+    # Explicit named args — array splatting would pass '-Template' as a POSITIONAL value.
+    if ($Pro) { & $bootstrap -Template $Persona -Portal }
+    else { & $bootstrap -Template $Persona }
+    exit $LASTEXITCODE
+  }
+}
+
 # Preflight: fail clearly on a name collision instead of hanging on a Hermes prompt.
 $existing = ''
 try { $existing = ((& $hermes profile list 2>$null) -join "`n") } catch { }
@@ -249,14 +325,39 @@ if ($existing -match "(^|\s)$([regex]::Escape($profileName))(\s|`$)") {
   exit 3
 }
 
+# Snapshot the shared auth store's corruption marker so we can flag a rotation caused here (issue #4).
+$homeRoot = Get-HermesHomeRoot
+$authBefore = Get-AuthCorruptStamp $homeRoot
+
 Write-Host "Installing '$Persona' as Hermes profile '$profileName' from $src ..."
-if ($Yes) { & $hermes profile install $src --name $profileName --yes }
+# Auto-confirm Hermes' own install prompt whenever we're NOT interactive (either -Yes, or stdin is
+# redirected/absent). Otherwise `hermes profile install` would block waiting for input and hang.
+if (-not $Interactive) { & $hermes profile install $src --name $profileName --yes }
 else { & $hermes profile install $src --name $profileName }
 if ($LASTEXITCODE -ne 0) { Write-Host "hermes profile install failed (exit $LASTEXITCODE)."; exit $LASTEXITCODE }
 
+Copy-MetaSkillFallback $src
+
 if ($Pro) { Invoke-PortalSplice $RepoRoot $hermes $profileName }
+
+Show-AuthRotationWarning $homeRoot $authBefore
 
 Write-Host ''
 Write-Host 'Installed. Finish setup:'
 Write-Host "  hermes -p $profileName        # open the profile"
 Write-Host '  # then run /finish-setup inside the agent to add a free key + install its skills'
+# Per-profile sessions note + opt-in switch (issue #5): a named install leaves your active profile
+# unchanged, so Hermes may open a different (near-empty) profile next — nothing was wiped.
+Write-Host ''
+Write-Host 'Sessions, auth, and memory are per-profile. This install did NOT touch your other profiles;'
+Write-Host "your previous chat history is still in its original profile. To land in '$profileName', make it"
+Write-Host 'your sticky default:'
+Write-Host "  hermes profile use $profileName"
+if ($Interactive) {
+  $sw = Read-Host "Make '$profileName' your sticky default profile now? [y/N]"
+  if ($sw -match '^(?i)(y|yes)$') {
+    & $hermes profile use $profileName
+    if ($LASTEXITCODE -eq 0) { Write-Host "  + '$profileName' is now your default profile." }
+    else { Write-Host "  ! 'hermes profile use $profileName' failed — run it manually." }
+  }
+}

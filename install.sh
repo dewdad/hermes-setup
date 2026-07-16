@@ -189,6 +189,24 @@ install_profile() {
     exit 1
   }
   profile="${NAME:-$persona}"
+  # Choose how to apply: NEW isolated profile (default) or EXTEND current/default (issue #2).
+  # Interactive tty only — piped or --yes runs keep the isolated-profile default.
+  if [ "$ASSUME_YES" = 0 ] && [ -t 0 ]; then
+    echo
+    echo "How do you want to apply '$persona'?"
+    echo "  [1] New isolated profile '$profile' (recommended) — its own sessions + auth; current profile untouched."
+    echo "  [2] Extend your CURRENT / default profile — inherit its existing sessions, auth, and skills."
+    echo "      (A new isolated profile starts with empty history; your existing history stays in its own profile, reachable via 'hermes -p <old>'.)"
+    printf 'Choose [1/2] (default: 1): '
+    read -r mode || mode=""
+    if [ "$mode" = 2 ]; then
+      local bootstrap="$REPO_ROOT/bootstrap.sh"
+      [ -f "$bootstrap" ] || { echo "bootstrap.sh not found at $bootstrap" >&2; exit 1; }
+      echo "Extending the current/default profile via bootstrap ..."
+      if [ "$PRO" = 1 ]; then bash "$bootstrap" --template "$persona" --portal; else bash "$bootstrap" --template "$persona"; fi
+      exit $?
+    fi
+  fi
   # Preflight: fail clearly on a name collision instead of hanging on a Hermes prompt.
   if hermes profile list 2>/dev/null | grep -Eq "(^|[[:space:]])${profile}([[:space:]]|\$)"; then
     echo "A Hermes profile named '$profile' already exists." >&2
@@ -196,16 +214,18 @@ install_profile() {
     echo "(or update the existing one:  hermes profile update $profile)" >&2
     exit 3
   fi
+  # Snapshot the shared auth store's corruption marker so we can flag a rotation caused here (issue #4).
+  HOME_ROOT="$(hermes_home_root)"
+  AUTH_BEFORE="$(auth_corrupt_stamp "$HOME_ROOT")"
   echo "Installing '$persona' as Hermes profile '$profile' from $src ..."
-  if [ "$ASSUME_YES" = 1 ]; then
+  # Auto-confirm Hermes' own install prompt whenever we're NOT interactive (either --yes, or stdin is
+  # not a tty). Otherwise `hermes profile install` would block waiting for input and hang.
+  if [ "$ASSUME_YES" = 1 ] || [ ! -t 0 ]; then
     hermes profile install "$src" --name "$profile" --yes
   else
     hermes profile install "$src" --name "$profile"
   fi
-  echo
-  echo "Installed. Finish setup:"
-  echo "  hermes -p $profile        # open the profile"
-  echo "  # then run /finish-setup inside the agent to add a free key + install its skills"
+  copy_meta_skill_fallback "$src"
 }
 
 # Splice the paid Nous Portal base-layer config onto an already-installed profile, then OAuth-login.
@@ -247,9 +267,56 @@ portal_splice() {
       || echo "  warning: 'hermes -p $profile config set $key' failed — set it manually." >&2
   done
   echo "Logging in to Nous Portal (OAuth) ..."
-  hermes auth add nous \
-    || echo "  Portal login not completed. Run 'hermes auth add nous' when a browser is available." >&2
+  # Target the named profile (-p) so the OAuth credential is written under the profile's own home,
+  # never the shared ROOT auth.json (issue #4 — a named install must not mutate root auth).
+  hermes -p "$profile" auth add nous \
+    || echo "  Portal login not completed. Run 'hermes -p $profile auth add nous' when a browser is available." >&2
   echo "Paid Portal base applied. Verify with:  hermes -p $profile portal info"
+}
+
+# Resolve the ROOT Hermes home (where the shared auth.json lives — NOT a profile dir). Used only for
+# the auth-integrity warning; auth is root-scoped, so a named install still shares it.
+hermes_home_root() {
+  if [ -n "${HERMES_HOME:-}" ]; then echo "$HERMES_HOME"; return; fi
+  if [ -n "${LOCALAPPDATA:-}" ] && [ -d "$LOCALAPPDATA/hermes" ]; then echo "$LOCALAPPDATA/hermes"; return; fi
+  echo "$HOME/.hermes"
+}
+
+# Print the auth.json.corrupt marker's mtime (epoch), or empty — so we can tell a rotation caused by
+# THIS session from a pre-existing one (issue #4). Handles both GNU and BSD stat.
+auth_corrupt_stamp() {
+  local p="$1/auth.json.corrupt"
+  [ -f "$p" ] || return 0
+  stat -c %Y "$p" 2>/dev/null || stat -f %m "$p" 2>/dev/null || echo ""
+}
+
+# Surface a credential-store rotation that happened during this session (issue #4). No data loss —
+# auth is shared across profiles and sessions are untouched; the user may just need to re-auth.
+show_auth_rotation_warning() {
+  local p="$1/auth.json.corrupt" now
+  [ -f "$p" ] || return 0
+  now="$(stat -c %Y "$p" 2>/dev/null || stat -f %m "$p" 2>/dev/null || echo 0)"
+  if [ -n "$2" ] && [ "$now" -le "$2" ] 2>/dev/null; then return 0; fi
+  echo >&2
+  echo "WARNING: Hermes rotated a corrupt credential store to auth.json.corrupt during this session." >&2
+  echo "  Location: $p" >&2
+  echo "  Auth is shared across profiles, so root credentials may need re-adding. NO sessions were lost." >&2
+  echo "  Restore with 'hermes auth' (or 'hermes setup --portal' for Portal), then 'hermes auth' to verify." >&2
+}
+
+# Copy the generated finish-setup meta-skill into the stable ~-anchored fallback external dir so
+# /finish-setup stays discoverable even when HERMES_HOME != the profile dir (issue #1). Matches the
+# ~/.hermes-setup/meta-skills entry the compiler emits into config.yaml's skills.external_dirs.
+copy_meta_skill_fallback() {
+  local src_skill="$1/meta-skills/finish-setup" dest_parent="$HOME/.hermes-setup/meta-skills"
+  [ -d "$src_skill" ] || return 0
+  mkdir -p "$dest_parent" 2>/dev/null || return 0
+  rm -rf "$dest_parent/finish-setup" 2>/dev/null || true
+  if cp -R "$src_skill" "$dest_parent/" 2>/dev/null; then
+    echo "  + /finish-setup also registered via ~/.hermes-setup/meta-skills (discoverable on Desktop / default profile)"
+  else
+    echo "  ! could not populate the ~/.hermes-setup/meta-skills fallback (tolerated)"
+  fi
 }
 
 resolve_repo_root
@@ -275,4 +342,28 @@ install_profile "$PROFILE"
 
 if [ "$PRO" = 1 ]; then
   portal_splice "${NAME:-$PROFILE}"
+fi
+
+show_auth_rotation_warning "$HOME_ROOT" "$AUTH_BEFORE"
+
+profile="${NAME:-$PROFILE}"
+echo
+echo "Installed. Finish setup:"
+echo "  hermes -p $profile        # open the profile"
+echo "  # then run /finish-setup inside the agent to add a free key + install its skills"
+# Per-profile sessions note + opt-in switch (issue #5): a named install leaves your active profile
+# unchanged, so Hermes may open a different (near-empty) profile next — nothing was wiped.
+echo
+echo "Sessions, auth, and memory are per-profile. This install did NOT touch your other profiles;"
+echo "your previous chat history is still in its original profile. To land in '$profile', make it"
+echo "your sticky default:"
+echo "  hermes profile use $profile"
+if [ "$ASSUME_YES" = 0 ] && [ -t 0 ]; then
+  printf "Make '%s' your sticky default profile now? [y/N] " "$profile"
+  read -r sw || sw=""
+  case "$sw" in
+    y|Y|yes|YES)
+      hermes profile use "$profile" && echo "  + '$profile' is now your default profile." \
+        || echo "  ! 'hermes profile use $profile' failed — run it manually.";;
+  esac
 fi

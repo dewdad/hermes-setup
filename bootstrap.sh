@@ -103,6 +103,14 @@ step "Target Hermes home"; info "$TARGET"
 [ "$DRY_RUN" = 1 ] || mkdir -p "$TARGET"
 export HERMES_HOME="$TARGET"
 
+# Snapshot the shared auth store's corruption marker so we can flag a rotation caused by this run
+# (issue #4). Bootstrap targets the default/root home, so auth.json lives directly under $TARGET.
+AUTH_CORRUPT="$TARGET/auth.json.corrupt"
+AUTH_CORRUPT_BEFORE=""
+if [ -f "$AUTH_CORRUPT" ]; then
+  AUTH_CORRUPT_BEFORE="$(stat -c %Y "$AUTH_CORRUPT" 2>/dev/null || stat -f %m "$AUTH_CORRUPT" 2>/dev/null || echo "")"
+fi
+
 step "Safety backup"
 if [ "$SKIP_BACKUP" = 1 ]; then skip "skipped (--skip-backup)"
 elif [ ! -f "$TARGET/config.yaml" ]; then skip "nothing to back up (fresh install)"
@@ -133,6 +141,20 @@ step "Distribution assets (skills / skill-bundles / cron / mcp.json)"
 if [ "$SKIP_SKILLS" = 1 ]; then skip "skills skipped (--skip-skills)"; else copy_tree "$SOURCE_HOME/skills" "$TARGET/skills" "skill"; fi
 copy_tree "$SOURCE_HOME/skill-bundles" "$TARGET/skill-bundles" "bundle"
 copy_tree "$SOURCE_HOME/cron" "$TARGET/cron" "cron"
+# The generated finish-setup meta-skill: copy into the target home so the profile-relative
+# `meta-skills` external_dirs entry resolves for this (default) profile, AND into the stable
+# ~-anchored fallback so /finish-setup stays discoverable on Desktop / other surfaces where
+# HERMES_HOME differs (issue #1). Kept OUT of skills/ (never wiped by `hermes profile update`).
+copy_tree "$SOURCE_HOME/meta-skills" "$TARGET/meta-skills" "meta-skill"
+if [ -d "$SOURCE_HOME/meta-skills/finish-setup" ] && [ "$DRY_RUN" = 0 ]; then
+  fb_parent="$HOME/.hermes-setup/meta-skills"
+  if mkdir -p "$fb_parent" 2>/dev/null; then
+    rm -rf "$fb_parent/finish-setup" 2>/dev/null || true
+    cp -R "$SOURCE_HOME/meta-skills/finish-setup" "$fb_parent/" 2>/dev/null \
+      && ok "/finish-setup fallback -> ~/.hermes-setup/meta-skills" \
+      || warn "could not populate ~/.hermes-setup/meta-skills fallback (tolerated)"
+  fi
+elif [ "$DRY_RUN" = 1 ]; then info "[dry-run] copy meta-skills/finish-setup -> ~/.hermes-setup/meta-skills"; fi
 if [ -f "$SOURCE_HOME/mcp.json" ]; then
   if [ "$DRY_RUN" = 1 ]; then info "[dry-run] copy mcp.json"; else cp -f "$SOURCE_HOME/mcp.json" "$TARGET/mcp.json"; ok "wrote mcp.json"; fi
 fi
@@ -273,6 +295,18 @@ else
   fi
   if [ "$proceed" = 1 ]; then sh "$SETUP_SCRIPT" && ok "ran setup steps" || warn "setup steps reported issues (tolerated)"; fi
 fi
+
+step "Auth integrity"
+if [ "$DRY_RUN" = 1 ]; then skip "[dry-run] would check for an auth.json.corrupt rotation"
+elif [ -f "$AUTH_CORRUPT" ]; then
+  auth_now="$(stat -c %Y "$AUTH_CORRUPT" 2>/dev/null || stat -f %m "$AUTH_CORRUPT" 2>/dev/null || echo 0)"
+  if [ -z "$AUTH_CORRUPT_BEFORE" ] || { [ "$auth_now" -gt "$AUTH_CORRUPT_BEFORE" ] 2>/dev/null; }; then
+    warn "Hermes rotated a corrupt credential store to auth.json.corrupt during this run (issue #4)."
+    info "  Location: $AUTH_CORRUPT"
+    info "  Credentials may need re-adding (auth is shared across profiles). NO sessions were lost."
+    info "  Restore with 'hermes auth' (or 'hermes setup --portal' for Portal), then 'hermes auth' to verify."
+  else ok "no new auth-store corruption detected"; fi
+else ok "no auth-store corruption detected"; fi
 
 step "Verify"
 if [ "$DRY_RUN" = 1 ]; then info "[dry-run] would run: hermes config check"

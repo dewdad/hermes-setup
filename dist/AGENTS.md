@@ -30,6 +30,16 @@ This tree is a *build output*, not a source of truth.
   as `/finish-setup`). It sits in a top-level `meta-skills/` dir (distribution-owned, refreshed on
   update) referenced via a profile-relative `skills.external_dirs` entry in `config.yaml`. Because it
   is NOT under `skills/`, `hermes profile update` refreshes it without ever touching user skills.
+  `config.yaml`'s `skills.external_dirs` lists TWO discovery entries so `/finish-setup` registers on
+  every surface: `meta-skills` FIRST (profile-relative — authoritative under `hermes -p <name>`), then
+  the stable `~`-anchored fallback `~/.hermes-setup/meta-skills`. Hermes resolves a relative entry
+  against `HERMES_HOME` (the profile dir only for `hermes -p <name>`; the root/default home on Desktop,
+  the gateway, and subprocesses), so the relative entry alone would leave `/finish-setup` invisible
+  there; the fallback `expanduser`s to an absolute path that resolves regardless of `HERMES_HOME`. The
+  apply flow (`install.*` / `bootstrap.*`) copies the meta-skill into that shared dir (and `bootstrap.*`
+  also copies `meta-skills/` into the target home so the relative entry resolves for the default
+  profile). The shared copy is "last-installed-persona wins" and not auto-refreshed by `profile
+  update`.
 - **Distribution layout** (per persona) — the compiler emits:
   - `distribution.yaml` — flat Hermes distribution manifest.
   - `config.yaml` — Hermes config fragment (uses `${VAR}` / `key_env`; never literal secrets;
@@ -42,6 +52,14 @@ This tree is a *build output*, not a source of truth.
   - `skill-bundles/` — declared bundles (skill *names* only, no content).
   - `skills.install.json` — machine-readable referenced-skill list the apply flow auto-installs
     (present iff the persona declares `post_install[]`).
+  - `skills.sh.json` — Skills-Hub category-label manifest (schema `skills.sh/schemas/skills.sh.schema.json`):
+    its `groupings` become the labels a published persona tap presents. Built by
+    `manifest.build_skills_sh` from the persona's vendored skill categories + declared bundles;
+    present iff the persona declares vendored `skills.include[]` OR `bundles[]` (so it is ABSENT for
+    the reference-only free personas that vendor nothing). Distinct from `skills.install.json`
+    (which lists post-install skill ids the apply flow installs); this one only carries hub labels,
+    installs nothing. Distribution-owned and secret-scanned at emit (like every generated manifest)
+    and again by the `dist/`-wide `verify` gate.
   - `setup.steps.sh` / `setup.steps.ps1` — generated per-platform local-tool provisioning scripts
     (present iff the persona declares `setup_steps[]`); the apply flow runs the matching one
     (gated, idempotent, failure-tolerant). Generated infrastructure like the meta-skill —

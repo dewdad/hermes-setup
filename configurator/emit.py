@@ -28,6 +28,7 @@ from configurator.setup_scripts import (
     build_setup_script_windows,
 )
 from configurator.setup_skill import (
+    FALLBACK_META_SKILLS_DIR,
     FINISH_SETUP_NAME,
     META_SKILLS_DIRNAME,
     build_finish_setup_skill,
@@ -63,9 +64,16 @@ def _build_config(template: Template) -> YamlMap:
     The generated ``meta-skills`` dir (which carries ``finish-setup``) is prepended to
     ``external_dirs`` as a profile-relative path so Hermes discovers and slash-registers it. It is
     kept out of ``skills/`` on purpose so ``hermes profile update`` never touches user skills.
+
+    A ``~``-anchored fallback (``FALLBACK_META_SKILLS_DIR``) follows it: Hermes resolves the relative
+    ``meta-skills`` entry against ``HERMES_HOME`` (the profile dir only for ``hermes -p <name>``;
+    root/absent on Desktop, gateway, and subprocesses), so on those surfaces the relative entry can't
+    resolve and ``/finish-setup`` would vanish. The fallback expands to an absolute home path that
+    resolves everywhere; the apply flow copies the meta-skill there. ``meta-skills`` stays first so
+    the profile-local copy remains authoritative.
     """
     config: YamlMap = {**template.config, "_config_version": CONFIG_VERSION}
-    external: list[YamlValue] = [META_SKILLS_DIRNAME]
+    external: list[YamlValue] = [META_SKILLS_DIRNAME, FALLBACK_META_SKILLS_DIR]
     for entry in template.skills.external_dirs:
         if entry not in external:
             external.append(entry)
@@ -142,10 +150,15 @@ def emit_distribution(
     scan_text(finish_setup, where=f"{META_SKILLS_DIRNAME}/{FINISH_SETUP_NAME}/SKILL.md")
     write_text(out_dir / META_SKILLS_DIRNAME / FINISH_SETUP_NAME / "SKILL.md", finish_setup)
 
+    # Generated skill manifests — scanned for secrets before writing, like every other artifact.
     if template.skills.include or template.bundles:
-        write_text(out_dir / "skills.sh.json", dump_json(build_skills_sh(template)))
+        skills_sh = dump_json(build_skills_sh(template))
+        scan_text(skills_sh, where="skills.sh.json")
+        write_text(out_dir / "skills.sh.json", skills_sh)
     if template.post_install:
-        write_text(out_dir / "skills.install.json", dump_json(build_skills_install(template)))
+        skills_install = dump_json(build_skills_install(template))
+        scan_text(skills_install, where="skills.install.json")
+        write_text(out_dir / "skills.install.json", skills_install)
     # Generated local-tool setup scripts (e.g. RTK). Secret-scanned before writing like every other
     # artifact; the apply-flow bootstrap runs the platform-matched one, gated by user confirmation.
     if template.setup_steps:

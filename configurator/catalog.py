@@ -40,21 +40,40 @@ _AGENT_INSTRUCTIONS = (
     "with no flag the free chain is used; "
     "(2) ask which `name` they want (and, if it supports `pro`, whether they want the free default or "
     "the paid Portal mode); "
-    "(3a) IF you are already running inside a local clone of this repo, run that profile's "
-    "`local_install_command` (append `--pro` for paid Portal mode); "
-    "(3b) OTHERWISE run its `standalone_posix_command` (macOS/Linux) or `standalone_windows_command` "
+    "(3) ask HOW to apply it — the two paths are different and the user should choose: "
+    "(a) a NEW ISOLATED profile (recommended default) — its own sessions/auth, leaving the current "
+    "profile untouched; run the profile's `local_posix_command` / `local_windows_command` / "
+    "`standalone_*_command` (the `install.sh` / `install.ps1` scripts — always use these, NOT a bare "
+    "`hermes profile install`, or `/finish-setup` will not register on Desktop/default surfaces); OR "
+    "(b) EXTEND the CURRENT/default profile — inherit its existing sessions/auth/skills; run "
+    "`bootstrap.sh --template <name>` / `bootstrap.ps1 -Template <name>` instead. "
+    "Warn the user that a NEW isolated profile starts with empty session history and separate auth "
+    "(their old history is intact in its original profile, reachable via `hermes -p <old>`); "
+    "(4a) IF you are already running inside a local clone of this repo, run that profile's "
+    "`local_posix_command` (macOS/Linux) or `local_windows_command` (Windows) — append `--pro` / "
+    "`-Pro` for paid Portal mode — for a new profile, or the `bootstrap.*` command to extend the "
+    "current one; "
+    "(4b) OTHERWISE run its `standalone_posix_command` (macOS/Linux) or `standalone_windows_command` "
     f"(Windows), first replacing {RAW_URL_PLACEHOLDER} and {GIT_URL_PLACEHOLDER} with the "
     "raw-content and git URLs of THIS repo (derive them from the link you were given). "
-    "NEVER run `hermes profile install` against a repo-subdirectory URL — it only accepts a repo "
-    "ROOT or a LOCAL folder, and the standalone command creates that local clone for you. "
+    "NEVER run `hermes profile install <repo-root-url>` for this repo: the installable profiles live "
+    "in `dist/<name>/` subdirectories, so the repo ROOT has NO distribution.yaml and the bare-root "
+    "install fails — do NOT fall back to downloading/extracting the repo ZIP yourself (that bakes a "
+    "transient temp-dir `source:` into the profile manifest and breaks `hermes profile update`). "
+    "The bundled installer scripts always clone to a STABLE cache and install from `./dist/<name>`. "
     "After install, open the profile (`hermes -p <name>`) and run `/finish-setup`."
 )
 
 _INSTALL_NOTE = (
-    "hermes profile install cannot target a subdirectory of a git repo (it clones the URL root and "
-    "requires distribution.yaml there). Install from a LOCAL clone: from inside a checkout run a "
-    "profile's local_install_command; standalone, run its standalone_posix_command / "
-    "standalone_windows_command (which clone the repo for you). See each profile entry."
+    "hermes profile install cannot target a subdirectory of a git repo, and this repo's installable "
+    "profiles live under dist/<name>/ — so the repo ROOT has no distribution.yaml and a bare "
+    "`hermes profile install <repo-root-url>` fails. Never improvise a repo-ZIP-to-temp install "
+    "(it bakes a transient source: that breaks profile update). Install from a LOCAL clone via the "
+    "bundled installer scripts (NOT a bare hermes profile install, which skips /finish-setup "
+    "registration on Desktop/default surfaces): from inside a checkout run a profile's "
+    "local_posix_command / local_windows_command (or bootstrap.* to extend the current profile); "
+    "standalone, run its standalone_posix_command / standalone_windows_command (which clone the repo "
+    "to a stable cache for you). See each profile entry."
 )
 
 
@@ -80,8 +99,12 @@ def _profile_entry(template: Template) -> YamlMap:
         "description": _description(template),
         "apply_modes": apply_modes,
         "path": f"dist/{name}",
-        # From inside a checkout only (relative ./dist path):
-        "local_install_command": f"hermes profile install ./dist/{name} --name {name} --yes",
+        # From inside a checkout: run the bundled installer (NOT a bare `hermes profile install`).
+        # The installer registers /finish-setup on every surface (populates the ~/.hermes-setup
+        # fallback dir), surfaces the new-vs-extend choice, and prints the per-profile-sessions note —
+        # all of which a bare `hermes profile install ./dist/<name>` would skip.
+        "local_posix_command": f"./install.sh {name} --yes",
+        "local_windows_command": f".\\install.ps1 {name} -Yes",
         # Standalone (no checkout): clone + install via the bundled scripts. URLs are placeholders.
         "standalone_posix_command": (
             f"curl -fsSL {RAW_URL_PLACEHOLDER}/install.sh | bash -s -- {name} "

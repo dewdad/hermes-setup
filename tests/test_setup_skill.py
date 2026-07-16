@@ -193,6 +193,17 @@ class Sections(unittest.TestCase):
             self.assertIn(heading, text)
 
 
+class PerProfileSessions(unittest.TestCase):
+    def test_per_profile_sessions_note_present(self) -> None:
+        # #5: finish-setup must explain sessions/auth are per-profile and how to switch, so a user
+        # who installed a NEW profile does not think their history was wiped.
+        text = build_finish_setup_skill(_tpl())  # type: ignore[arg-type]
+        low = text.lower()
+        self.assertIn("per-profile", low)
+        self.assertIn("hermes profile use", text)
+        self.assertIn("hermes -p", text)
+
+
 class SecretScan(unittest.TestCase):
     def test_env_names_and_catalogue_urls_pass_scan(self) -> None:
         tpl = _tpl(

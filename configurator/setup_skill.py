@@ -20,6 +20,14 @@ from configurator.yamlio import YamlMap, dump_yaml
 # The profile-relative external-skills dir the compiler ships the meta-skill into. Emitted verbatim
 # into config.yaml's ``skills.external_dirs`` so Hermes discovers + slash-registers finish-setup.
 META_SKILLS_DIRNAME = "meta-skills"
+# A stable, ``~``-anchored fallback external dir the apply flow populates with a copy of the
+# meta-skill. Because Hermes resolves relative external_dirs against ``HERMES_HOME`` (the profile
+# dir only for ``hermes -p <name>`` — root/absent for Desktop, gateway, and subprocesses), the
+# profile-relative ``meta-skills`` entry alone leaves ``/finish-setup`` invisible on those surfaces.
+# This entry expands (``os.path.expanduser``) to an absolute path independent of ``HERMES_HOME``, so
+# ``/finish-setup`` stays discoverable everywhere. Kept AFTER ``meta-skills`` so the profile-local
+# copy remains authoritative; the shared copy is "last-installed-persona wins".
+FALLBACK_META_SKILLS_DIR = "~/.hermes-setup/meta-skills"
 FINISH_SETUP_NAME = "finish-setup"
 _DESCRIPTION = "Finish Hermes setup: keys, skills, and discover more."  # <= 60 chars
 
@@ -300,6 +308,10 @@ def build_finish_setup_skill(template: Template) -> str:
         "",
         "## Pitfalls",
         "",
+        "- Sessions, auth, and memory are **per-profile**. Installing this as a new named profile does",
+        "  NOT delete anything — your previous chat history stays in its own profile. If Hermes opens",
+        "  a different (near-empty) profile afterward, nothing was wiped: make this one your sticky",
+        "  default with `hermes profile use <name>`, or open it directly with `hermes -p <name>`.",
         "- Tier-1 extras (Google apps, messaging) need their own setup and never block a working",
         "  agent — skip them freely.",
         "- Community SearXNG instances can rotate/expire; the DuckDuckGo fallback keeps web search",

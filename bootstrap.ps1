@@ -136,6 +136,10 @@ if ($HermesCli) { Write-Info "hermes CLI: $HermesCli" } else { Write-Warn2 "herm
 New-Dir $Target
 $OrigHermesHome = $env:HERMES_HOME
 $env:HERMES_HOME = $Target
+# Snapshot the shared auth store's corruption marker so we can flag a rotation caused by this run
+# (issue #4). Bootstrap targets the default/root home, so auth.json lives directly under $Target.
+$AuthCorruptPath = Join-Path $Target 'auth.json.corrupt'
+$AuthCorruptBefore = if (Test-Path -LiteralPath $AuthCorruptPath) { (Get-Item -LiteralPath $AuthCorruptPath).LastWriteTimeUtc } else { $null }
 try {
 
   Write-Step "Safety backup"
@@ -188,6 +192,22 @@ try {
   else { Copy-Tree (Join-Path $SourceHome 'skills') (Join-Path $Target 'skills') 'skill' }
   Copy-Tree (Join-Path $SourceHome 'skill-bundles') (Join-Path $Target 'skill-bundles') 'bundle'
   Copy-Tree (Join-Path $SourceHome 'cron') (Join-Path $Target 'cron') 'cron'
+  # The generated finish-setup meta-skill: copy into the target home so the profile-relative
+  # `meta-skills` external_dirs entry resolves for this (default) profile, AND into the stable
+  # ~-anchored fallback so /finish-setup stays discoverable on Desktop / other surfaces where
+  # HERMES_HOME differs (issue #1). Kept OUT of skills/ (never wiped by `hermes profile update`).
+  Copy-Tree (Join-Path $SourceHome 'meta-skills') (Join-Path $Target 'meta-skills') 'meta-skill'
+  $fbSkill = Join-Path $SourceHome 'meta-skills\finish-setup'
+  if ((Test-Path -LiteralPath $fbSkill) -and -not $DryRun) {
+    $fbParent = Join-Path $env:USERPROFILE '.hermes-setup\meta-skills'
+    try {
+      New-Item -ItemType Directory -Force -Path $fbParent | Out-Null
+      $fbDest = Join-Path $fbParent 'finish-setup'
+      if (Test-Path -LiteralPath $fbDest) { Remove-Item -LiteralPath $fbDest -Recurse -Force -ErrorAction SilentlyContinue }
+      Copy-Item -LiteralPath $fbSkill -Destination $fbParent -Recurse -Force
+      Write-Ok "/finish-setup fallback -> ~/.hermes-setup/meta-skills"
+    } catch { Write-Warn2 "could not populate ~/.hermes-setup/meta-skills fallback (tolerated): $($_.Exception.Message)" }
+  } elseif ($DryRun) { Write-Info "[dry-run] copy meta-skills/finish-setup -> ~/.hermes-setup/meta-skills" }
   $srcMcp = Join-Path $SourceHome 'mcp.json'
   if (Test-Path -LiteralPath $srcMcp) {
     if ($DryRun) { Write-Info "[dry-run] copy mcp.json" }
@@ -332,6 +352,18 @@ try {
       try { & $SetupScript; Write-Ok "ran setup steps" } catch { Write-Warn2 "setup steps reported issues (tolerated): $($_.Exception.Message)" }
     }
   }
+
+  Write-Step "Auth integrity"
+  if ($DryRun) { Write-Skip "[dry-run] would check for an auth.json.corrupt rotation" }
+  elseif (Test-Path -LiteralPath $AuthCorruptPath) {
+    $authNow = (Get-Item -LiteralPath $AuthCorruptPath).LastWriteTimeUtc
+    if (-not $AuthCorruptBefore -or $authNow -gt $AuthCorruptBefore) {
+      Write-Warn2 "Hermes rotated a corrupt credential store to auth.json.corrupt during this run (issue #4)."
+      Write-Info "  Location: $AuthCorruptPath"
+      Write-Info "  Credentials may need re-adding (auth is shared across profiles). NO sessions were lost."
+      Write-Info "  Restore with 'hermes auth' (or 'hermes setup --portal' for Portal), then 'hermes auth' to verify."
+    } else { Write-Ok "no new auth-store corruption detected" }
+  } else { Write-Ok "no auth-store corruption detected" }
 
   Write-Step "Verify"
   if ($DryRun) { Write-Info "[dry-run] would run: hermes config check" }

@@ -35,10 +35,11 @@ class CatalogShape(unittest.TestCase):
         self.assertEqual(entry["version"], "2.1.0")
         self.assertEqual(entry["description"], "Israeli legal")
         self.assertEqual(entry["path"], "dist/il-legal")
-        self.assertEqual(
-            entry["local_install_command"],
-            "hermes profile install ./dist/il-legal --name il-legal --yes",
-        )
+        # Local install routes through the bundled installer (NOT a bare `hermes profile install`),
+        # so the ~/.hermes-setup /finish-setup fallback + new-vs-extend choice are not bypassed.
+        self.assertEqual(entry["local_posix_command"], "./install.sh il-legal --yes")
+        self.assertEqual(entry["local_windows_command"], ".\\install.ps1 il-legal -Yes")
+        self.assertNotIn("local_install_command", entry)
 
     def test_standalone_commands_use_placeholders_and_name(self) -> None:
         entry = build_catalog([_tpl("il-legal")])["profiles"][0]  # type: ignore[index]
@@ -87,6 +88,33 @@ class ApplyModes(unittest.TestCase):
         tpl = parse_template({"name": "general-pro", "kind": "base", "portal_auth": True})  # type: ignore[arg-type]
         entry = build_catalog([tpl])["profiles"][0]  # type: ignore[index]
         self.assertEqual(entry["apply_modes"], ["pro"])
+
+
+class AgentInstructions(unittest.TestCase):
+    def _instructions(self) -> str:
+        cat = build_catalog([_tpl("general", description="d", version="1.0.0")])
+        text = cat["agent_instructions"]
+        assert isinstance(text, str)
+        return text
+
+    def test_asks_new_isolated_vs_extend_current(self) -> None:
+        # #2: an agent must ask whether to create a NEW isolated profile or EXTEND the current one.
+        text = self._instructions().lower()
+        self.assertIn("isolated", text)
+        self.assertIn("extend", text)
+        self.assertIn("bootstrap", text)  # extend path hands off to bootstrap.*
+
+    def test_warns_never_bare_repo_root_install(self) -> None:
+        # #3: never `hermes profile install <repo-root-url>` — distributions live under dist/<name>,
+        # so a bare repo-root URL has no distribution.yaml and improvises a dead %TEMP% source.
+        text = self._instructions()
+        self.assertIn("dist/", text)
+        low = text.lower()
+        self.assertIn("root", low)
+        self.assertTrue(
+            "distribution.yaml" in low or "no profile distribution" in low,
+            "instructions must explain the repo root has no distribution.yaml",
+        )
 
 
 class CatalogGolden(unittest.TestCase):

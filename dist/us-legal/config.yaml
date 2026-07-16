@@ -51,6 +51,7 @@ security:
 skills:
   external_dirs:
   - meta-skills
+  - ~/.hermes-setup/meta-skills
   - ~/open-skills/skills
   - ~/multi-gws-cli
 stt:

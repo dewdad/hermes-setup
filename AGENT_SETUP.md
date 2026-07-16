@@ -115,15 +115,17 @@ Use this when you want the persona isolated from the default profile. Every name
 
 2. **Run the optional external-skills prep step above** (best-effort, ignore failure).
 
-3. **Install the profile.** `hermes profile install` copies the distribution into `HERMES_HOME/profiles/<name>/`, runs Hermes' own env-var check, skill security scan, and generates `.env.EXAMPLE` inside the new profile:
+3. **Install the profile — prefer the bundled installer.** Run `install.ps1` / `install.sh` rather than a bare `hermes profile install`: the installer wraps `hermes profile install` (same env-var check, skill security scan, `.env.EXAMPLE` generation) **and** additionally seeds the stable `~/.hermes-setup/meta-skills` fallback so `/finish-setup` registers on every surface (default profile, gateway, Desktop), offers the new-isolated-vs-extend choice, and prints the per-profile-sessions note. Pass `-Yes` / `--yes` for an unattended run (also auto-skips the prompt), and `-Name` / `--name` to choose the profile name:
 
    ```powershell
-   hermes profile install .\dist\general --name my-general --yes
+   .\install.ps1 general -Name my-general -Yes
    ```
 
    ```bash
-   hermes profile install ./dist/general --name my-general --yes
+   ./install.sh general --name my-general --yes
    ```
+
+   A bare `hermes profile install .\dist\general --name my-general --yes` (POSIX: `./dist/general`) still works, but it does **not** seed the `~/.hermes-setup/meta-skills` fallback — so `/finish-setup` is then guaranteed only when you open the profile with `hermes -p my-general`, and may be absent on the default/Desktop surface until you run the installer once.
 
 4. **Locate the profile's `.env`.**
 
